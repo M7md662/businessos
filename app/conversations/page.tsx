@@ -117,6 +117,42 @@ const defaultKnowledge: KnowledgeData = {
     "س: كم تستغرق الخدمة؟\nج: تختلف المدة حسب نوع الخدمة وحجم المشروع.\n\nس: هل يمكن طلب تعديل؟\nج: نعم، يمكن طلب التعديلات حسب الاتفاق.",
 };
 
+function loadConversations(): Conversation[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+
+    if (!saved) {
+      return defaultConversations;
+    }
+
+    const parsed = JSON.parse(saved);
+
+    if (!Array.isArray(parsed)) {
+      return defaultConversations;
+    }
+
+    return parsed.map((conversation) => ({
+      ...conversation,
+      messages: Array.isArray(conversation.messages)
+        ? conversation.messages
+        : [],
+      status:
+        conversation.status === "جديدة" ||
+        conversation.status === "قيد المتابعة" ||
+        conversation.status === "مغلقة"
+          ? conversation.status
+          : "جديدة",
+      unread: Boolean(conversation.unread),
+      lastMessage:
+        typeof conversation.lastMessage === "string"
+          ? conversation.lastMessage
+          : "",
+    }));
+  } catch {
+    return defaultConversations;
+  }
+}
+
 export default function ConversationsPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -125,22 +161,12 @@ export default function ConversationsPage() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+    const loaded = loadConversations();
 
-      if (saved) {
-        const parsed = JSON.parse(saved);
+    setConversations(loaded);
 
-        if (Array.isArray(parsed)) {
-          setConversations(parsed);
-        } else {
-          setConversations(defaultConversations);
-        }
-      } else {
-        setConversations(defaultConversations);
-      }
-    } catch {
-      setConversations(defaultConversations);
+    if (loaded.length > 0) {
+      setSelectedId(loaded[0].id);
     }
 
     setIsLoaded(true);
@@ -149,19 +175,11 @@ export default function ConversationsPage() {
   useEffect(() => {
     if (!isLoaded) return;
 
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(conversations)
-      );
-    } catch {}
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(conversations)
+    );
   }, [conversations, isLoaded]);
-
-  useEffect(() => {
-    if (conversations.length > 0 && selectedId === null) {
-      setSelectedId(conversations[0].id);
-    }
-  }, [conversations, selectedId]);
 
   const selectedConversation =
     conversations.find(
@@ -195,15 +213,17 @@ export default function ConversationsPage() {
     try {
       const saved = localStorage.getItem(KNOWLEDGE_KEY);
 
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      if (!saved) {
+        return defaultKnowledge;
+      }
 
-        if (parsed && typeof parsed === "object") {
-          return {
-            ...defaultKnowledge,
-            ...parsed,
-          };
-        }
+      const parsed = JSON.parse(saved);
+
+      if (parsed && typeof parsed === "object") {
+        return {
+          ...defaultKnowledge,
+          ...parsed,
+        };
       }
     } catch {}
 
@@ -235,7 +255,9 @@ export default function ConversationsPage() {
               lastMessage: text,
               status: "قيد المتابعة",
               messages: [
-                ...conversation.messages,
+                ...(Array.isArray(conversation.messages)
+                  ? conversation.messages
+                  : []),
                 newMessage,
               ],
             }
@@ -251,10 +273,13 @@ export default function ConversationsPage() {
       return;
     }
 
-    const lastCustomerMessage =
-      [...selectedConversation.messages]
-        .reverse()
-        .find((item) => item.sender === "customer");
+    const messages = Array.isArray(selectedConversation.messages)
+      ? selectedConversation.messages
+      : [];
+
+    const lastCustomerMessage = [...messages]
+      .reverse()
+      .find((item) => item.sender === "customer");
 
     if (!lastCustomerMessage) {
       alert("لا توجد رسالة من العميل.");
@@ -264,8 +289,6 @@ export default function ConversationsPage() {
     setIsGenerating(true);
 
     try {
-      const knowledge = getKnowledge();
-
       const response = await fetch("/api/ai", {
         method: "POST",
         headers: {
@@ -273,7 +296,7 @@ export default function ConversationsPage() {
         },
         body: JSON.stringify({
           message: lastCustomerMessage.text,
-          knowledge,
+          knowledge: getKnowledge(),
         }),
       });
 
@@ -288,7 +311,9 @@ export default function ConversationsPage() {
       const reply = String(data?.reply || "").trim();
 
       if (!reply) {
-        throw new Error("لم يصل رد من الذكاء الاصطناعي");
+        throw new Error(
+          "لم يصل رد من الذكاء الاصطناعي."
+        );
       }
 
       const aiMessage: Message = {
@@ -310,7 +335,9 @@ export default function ConversationsPage() {
                 status: "قيد المتابعة",
                 unread: false,
                 messages: [
-                  ...conversation.messages,
+                  ...(Array.isArray(conversation.messages)
+                    ? conversation.messages
+                    : []),
                   aiMessage,
                 ],
               }
@@ -321,7 +348,9 @@ export default function ConversationsPage() {
       console.error("AI Conversation Error:", error);
 
       alert(
-        "حدث خطأ أثناء إنشاء رد الذكاء الاصطناعي."
+        error instanceof Error
+          ? error.message
+          : "حدث خطأ أثناء إنشاء رد الذكاء الاصطناعي."
       );
     } finally {
       setIsGenerating(false);
@@ -359,28 +388,28 @@ export default function ConversationsPage() {
   return (
     <main
       dir="rtl"
-      className="min-h-screen bg-slate-50 p-4 text-slate-900 md:p-8"
+      className="min-h-screen bg-slate-50 p-3 text-slate-900 sm:p-5 lg:p-8"
     >
       <div className="mx-auto max-w-7xl">
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-xl text-white">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-lg text-white sm:h-12 sm:w-12">
               💬
             </div>
 
-            <div>
-              <h1 className="text-3xl font-bold">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold sm:text-3xl">
                 المحادثات
               </h1>
 
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-xs text-slate-500 sm:text-sm">
                 إدارة محادثات العملاء والرد باستخدام الذكاء الاصطناعي
               </p>
             </div>
           </div>
         </div>
 
-        <div className="mb-6 grid gap-4 md:grid-cols-3">
+        <div className="mb-5 grid gap-3 sm:gap-4 md:grid-cols-3">
           <StatCard
             title="إجمالي المحادثات"
             value={conversations.length}
@@ -397,109 +426,116 @@ export default function ConversationsPage() {
           />
         </div>
 
-        <div className="grid min-h-[650px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm lg:grid-cols-[340px_1fr]">
-          <aside className="border-l border-slate-200">
-            <div className="border-b border-slate-200 p-5">
-              <h2 className="font-bold">
-                المحادثات
-              </h2>
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="grid lg:grid-cols-[340px_1fr]">
+            <aside className="border-b border-slate-200 lg:border-b-0 lg:border-l">
+              <div className="border-b border-slate-200 p-4 sm:p-5">
+                <h2 className="font-bold">
+                  المحادثات
+                </h2>
 
-              <p className="mt-1 text-xs text-slate-500">
-                اختر محادثة لعرض الرسائل
-              </p>
-            </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  اختر محادثة لعرض الرسائل
+                </p>
+              </div>
 
-            <div>
-              {conversations.map((conversation) => (
-                <button
-                  key={conversation.id}
-                  onClick={() =>
-                    selectConversation(conversation.id)
-                  }
-                  className={`w-full border-b border-slate-100 p-5 text-right transition ${
-                    selectedId === conversation.id
-                      ? "bg-slate-100"
-                      : "hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold">
-                        {conversation.customer}
-                      </p>
+              <div className="max-h-[300px] overflow-y-auto lg:max-h-[650px]">
+                {conversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    onClick={() =>
+                      selectConversation(conversation.id)
+                    }
+                    className={`w-full border-b border-slate-100 p-4 text-right transition sm:p-5 ${
+                      selectedId === conversation.id
+                        ? "bg-slate-100"
+                        : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          {conversation.customer}
+                        </p>
 
-                      <p className="mt-2 truncate text-xs text-slate-500">
-                        {conversation.lastMessage}
-                      </p>
+                        <p className="mt-2 truncate text-xs text-slate-500">
+                          {conversation.lastMessage || "لا توجد رسائل"}
+                        </p>
+                      </div>
+
+                      {conversation.unread && (
+                        <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-900" />
+                      )}
                     </div>
 
-                    {conversation.unread && (
-                      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-900" />
-                    )}
+                    <div className="mt-3">
+                      <StatusBadge
+                        status={conversation.status}
+                      />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </aside>
+
+            <section className="flex min-h-[600px] flex-col sm:min-h-[650px]">
+              {selectedConversation ? (
+                <>
+                  <div className="border-b border-slate-200 p-4 sm:p-5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h2 className="font-bold">
+                          {selectedConversation.customer}
+                        </h2>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          محادثة العميل
+                        </p>
+                      </div>
+
+                      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                        <button
+                          onClick={generateAIReply}
+                          disabled={isGenerating}
+                          className="w-full rounded-xl bg-slate-900 px-4 py-3 text-xs font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-2"
+                        >
+                          {isGenerating
+                            ? "جاري إنشاء الرد..."
+                            : "رد بالذكاء الاصطناعي"}
+                        </button>
+
+                        <select
+                          value={selectedConversation.status}
+                          onChange={(event) =>
+                            changeStatus(
+                              event.target.value as ConversationStatus
+                            )
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs outline-none focus:border-slate-900 sm:w-auto sm:py-2"
+                        >
+                          <option value="جديدة">
+                            جديدة
+                          </option>
+
+                          <option value="قيد المتابعة">
+                            قيد المتابعة
+                          </option>
+
+                          <option value="مغلقة">
+                            مغلقة
+                          </option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-3">
-                    <StatusBadge
-                      status={conversation.status}
-                    />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </aside>
-
-          <section className="flex min-h-[650px] flex-col">
-            {selectedConversation ? (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
-                  <div>
-                    <h2 className="font-bold">
-                      {selectedConversation.customer}
-                    </h2>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      محادثة العميل
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={generateAIReply}
-                      disabled={isGenerating}
-                      className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {isGenerating
-                        ? "جاري إنشاء الرد..."
-                        : "رد بالذكاء الاصطناعي"}
-                    </button>
-
-                    <select
-                      value={selectedConversation.status}
-                      onChange={(event) =>
-                        changeStatus(
-                          event.target.value as ConversationStatus
-                        )
-                      }
-                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-slate-900"
-                    >
-                      <option value="جديدة">
-                        جديدة
-                      </option>
-
-                      <option value="قيد المتابعة">
-                        قيد المتابعة
-                      </option>
-
-                      <option value="مغلقة">
-                        مغلقة
-                      </option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-6">
-                  {selectedConversation.messages.map(
-                    (item) => (
+                  <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50 p-4 sm:p-6">
+                    {(Array.isArray(
+                      selectedConversation.messages
+                    )
+                      ? selectedConversation.messages
+                      : []
+                    ).map((item) => (
                       <div
                         key={item.id}
                         className={`flex ${
@@ -509,7 +545,7 @@ export default function ConversationsPage() {
                         }`}
                       >
                         <div
-                          className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                          className={`max-w-[90%] rounded-2xl px-4 py-3 sm:max-w-[80%] ${
                             item.sender === "me"
                               ? "bg-slate-900 text-white"
                               : "border border-slate-200 bg-white"
@@ -521,7 +557,7 @@ export default function ConversationsPage() {
                               : selectedConversation.customer}
                           </p>
 
-                          <p className="text-sm leading-6">
+                          <p className="break-words text-sm leading-6">
                             {item.text}
                           </p>
 
@@ -536,65 +572,66 @@ export default function ConversationsPage() {
                           </p>
                         </div>
                       </div>
-                    )
-                  )}
+                    ))}
 
-                  {isGenerating && (
-                    <div className="flex justify-start">
-                      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                        <p className="text-sm text-slate-500">
-                          BusinessOS AI يكتب الرد...
-                        </p>
+                    {isGenerating && (
+                      <div className="flex justify-start">
+                        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                          <p className="text-sm text-slate-500">
+                            BusinessOS AI يكتب الرد...
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="border-t border-slate-200 bg-white p-5">
-                  <div className="flex gap-3">
-                    <input
-                      value={message}
-                      onChange={(event) =>
-                        setMessage(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (
-                          event.key === "Enter" &&
-                          !event.shiftKey
-                        ) {
-                          event.preventDefault();
-                          sendMessage();
-                        }
-                      }}
-                      disabled={isGenerating}
-                      placeholder="اكتب ردك هنا..."
-                      className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-900 disabled:bg-slate-50"
-                    />
-
-                    <button
-                      onClick={sendMessage}
-                      disabled={
-                        isGenerating || !message.trim()
-                      }
-                      className="rounded-xl bg-slate-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      إرسال
-                    </button>
+                    )}
                   </div>
 
-                  <p className="mt-3 text-xs text-slate-400">
-                    يمكنك إرسال رد يدوي أو استخدام الذكاء الاصطناعي.
+                  <div className="border-t border-slate-200 bg-white p-4 sm:p-5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                      <input
+                        value={message}
+                        onChange={(event) =>
+                          setMessage(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            !event.shiftKey
+                          ) {
+                            event.preventDefault();
+                            sendMessage();
+                          }
+                        }}
+                        disabled={isGenerating}
+                        placeholder="اكتب ردك هنا..."
+                        className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-slate-900 disabled:bg-slate-50"
+                      />
+
+                      <button
+                        onClick={sendMessage}
+                        disabled={
+                          isGenerating ||
+                          !message.trim()
+                        }
+                        className="w-full rounded-xl bg-slate-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                      >
+                        إرسال
+                      </button>
+                    </div>
+
+                    <p className="mt-3 text-xs text-slate-400">
+                      يمكنك إرسال رد يدوي أو استخدام الذكاء الاصطناعي.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center p-8">
+                  <p className="text-sm text-slate-500">
+                    لا توجد محادثة محددة.
                   </p>
                 </div>
-              </>
-            ) : (
-              <div className="flex flex-1 items-center justify-center">
-                <p className="text-sm text-slate-500">
-                  اختر محادثة من القائمة
-                </p>
-              </div>
-            )}
-          </section>
+              )}
+            </section>
+          </div>
         </div>
       </div>
     </main>
@@ -609,12 +646,12 @@ function StatCard({
   value: number;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <p className="text-sm text-slate-500">
         {title}
       </p>
 
-      <p className="mt-3 text-3xl font-bold">
+      <p className="mt-3 text-2xl font-bold sm:text-3xl">
         {value}
       </p>
     </div>
@@ -637,7 +674,7 @@ function StatusBadge({
 
   return (
     <span
-      className={`rounded-lg px-3 py-1 text-xs font-medium ${styles[status]}`}
+      className={`inline-flex rounded-lg px-3 py-1 text-xs font-medium ${styles[status]}`}
     >
       {status}
     </span>
