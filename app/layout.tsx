@@ -29,11 +29,13 @@ export default function RootLayout({
       dir="rtl"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-screen bg-slate-50 text-slate-900">
+      <body className="min-h-screen w-full overflow-x-hidden bg-slate-50 text-slate-900">
         <Sidebar />
 
-        <div className="min-h-screen pr-72">
-          <main className="min-h-screen">{children}</main>
+        <div className="min-h-screen w-full min-w-0 md:pr-72">
+          <main className="min-h-screen w-full min-w-0 overflow-x-hidden">
+            {children}
+          </main>
         </div>
       </body>
     </html>
