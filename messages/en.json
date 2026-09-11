@@ -1,0 +1,159 @@
+{
+  "common": {
+    "dashboard": "Dashboard",
+    "customers": "Customers",
+    "orders": "Orders",
+    "tasks": "Tasks",
+    "conversations": "Conversations",
+    "knowledgeBase": "Knowledge Base",
+    "aiAssistant": "AI Assistant",
+    "settings": "Settings",
+    "search": "Search",
+    "language": "Language",
+    "arabic": "العربية",
+    "english": "English",
+    "main": "Main",
+    "workManagement": "Work Management",
+    "communicationAI": "Communication & AI",
+    "smartBusinessManagement": "Smart Business Management System",
+    "workspace": "Workspace",
+    "aiBusinessAssistant": "Smart Business Assistant",
+    "connected": "Connected",
+    "aiDescription": "Smart assistant for understanding customers, orders, and business performance.",
+    "openAssistant": "Open Assistant",
+    "adminAccount": "Admin Account"
+  },
+
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome to BusinessOS",
+    "overview": "Overview of your business activity",
+
+    "businessWorkspace": "Business Workspace",
+    "workspace": "Workspace",
+    "workspaceTitle": "Business Workspace",
+
+    "accountManager": "Account Manager",
+    "administrator": "Administrator",
+
+    "navDashboard": "Dashboard",
+    "navTasks": "Tasks",
+    "navCustomers": "Customers",
+    "navOrders": "Orders",
+    "navConversations": "Conversations",
+    "navKnowledge": "Knowledge Base",
+    "navAI": "AI Assistant",
+    "navSettings": "Settings",
+
+    "customers": "Customers",
+    "orders": "Orders",
+    "tasks": "Tasks",
+    "revenue": "Revenue",
+
+    "inProgress": "In Progress",
+    "completed": "Completed",
+    "completedStatus": "Completed",
+
+    "totalOrders": "Total Orders",
+    "noData": "No Data",
+
+    "efficiency": "Efficiency",
+    "today": "Today",
+    "week": "Week",
+
+    "communication": "Communication",
+    "thisMonth": "This Month",
+    "totalCustomers": "Total Customers",
+    "all": "All",
+    "active": "Active",
+    "new": "New",
+
+    "last7Days": "Last 7 Days",
+    "allCustomers": "All Customers",
+
+    "recentOrders": "Recent Orders",
+    "latestWorkspaceActivity": "Latest activity in your workspace",
+    "viewAll": "View All",
+
+    "customer": "Customer",
+    "service": "Service",
+    "value": "Value",
+    "status": "Status",
+    "date": "Date",
+
+    "noOrders": "No orders yet",
+    "noName": "No Name",
+
+    "currentTasks": "Current Tasks",
+    "due": "Due",
+    "noDueDate": "No due date",
+    "noTasks": "No tasks",
+
+    "loginRequired": "You must sign in first.",
+    "authRequired": "You must sign in first.",
+    "companyNotFound": "Workspace not found.",
+    "dashboardLoadError": "An error occurred while loading dashboard data.",
+    "settings": "Settings"
+  },
+
+  "customers": {
+    "management": "Customer Management",
+    "title": "Customers",
+    "description": "Manage your company's customers and their contact information.",
+
+    "addCustomer": "Add Customer",
+    "newCustomer": "Add New Customer",
+    "newCustomerDescription": "Add the customer's basic information to your customer database.",
+
+    "customerName": "Customer Name",
+    "namePlaceholder": "Example: Ahmed Ali",
+
+    "phone": "Phone Number",
+    "phonePlaceholder": "01012345678",
+
+    "email": "Email Address",
+    "emailPlaceholder": "example@email.com",
+
+    "saving": "Saving...",
+    "saveCustomer": "Save Customer",
+    "cancel": "Cancel",
+
+    "totalCustomers": "Total Customers",
+    "activeCustomers": "Active Customers",
+    "inactiveCustomers": "Inactive Customers",
+
+    "customerList": "Customer List",
+    "customerListDescription": "All customers registered in your company.",
+    "customerCount": "customer",
+
+    "noCustomers": "No customers yet",
+    "noCustomersDescription": "Add your first customer to start managing your customer database.",
+
+    "customer": "Customer",
+    "status": "Status",
+    "action": "Action",
+
+    "businessOSCustomer": "BusinessOS Customer",
+
+    "active": "Active",
+    "inactive": "Inactive",
+
+    "delete": "Delete",
+
+    "loading": "Loading customers...",
+
+    "loginRequired": "You must sign in first.",
+    "companyError": "Unable to determine the company associated with your account.",
+    "companyNotFound": "No company is associated with this account.",
+
+    "loadError": "An error occurred while loading customers.",
+
+    "enterName": "Please enter the customer's name.",
+
+    "saveError": "An error occurred while saving the customer.",
+    "addError": "An error occurred while adding the customer.",
+
+    "deleteConfirm": "Are you sure you want to delete this customer?",
+    "deleteError": "An error occurred while deleting the customer."
+  }
+}

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "BusinessOS",
-  description: "نظام إدارة الأعمال الذكي",
+  description: "BusinessOS - Smart Business Management System",
 };
 
 export default function RootLayout({
@@ -24,19 +23,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="ar"
-      dir="rtl"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-screen w-full overflow-x-hidden bg-slate-50 text-slate-900">
-        <Sidebar />
-
-        <div className="min-h-screen w-full min-w-0 md:pr-72">
-          <main className="min-h-screen w-full min-w-0 overflow-x-hidden">
-            {children}
-          </main>
-        </div>
+    <html lang="ar" dir="rtl">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-[#f8fafc] text-slate-900 antialiased`}
+      >
+        {children}
       </body>
     </html>
   );
