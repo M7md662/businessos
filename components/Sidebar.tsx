@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -96,6 +96,16 @@ function Icon({
           <circle cx="9" cy="7" r="4" />
           <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
           <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      );
+
+    case "team":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="8" r="3.5" />
+          <path d="M5 21v-1.5a5.5 5.5 0 0 1 11 0V21" />
+          <path d="M18 11a3 3 0 0 1 3 3v1" />
+          <path d="M19 21v-1.5a4 4 0 0 0-2-3.46" />
         </svg>
       );
 
@@ -515,3 +525,4 @@ export default function Sidebar() {
     </>
   );
 }
+

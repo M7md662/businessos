@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -14,6 +14,9 @@ import {
   ChevronRight,
   Sparkles,
   Settings as SettingsIcon,
+  Users,
+  Mail,
+  QrCode,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -22,6 +25,8 @@ export default function SettingsPage() {
   const isEnglish = locale === "en";
 
   const [email, setEmail] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
+
   const [aiEnabled, setAiEnabled] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [taskNotifications, setTaskNotifications] = useState(true);
@@ -42,7 +47,8 @@ export default function SettingsPage() {
         accountDescription: "Your account information",
         email: "Email address",
         role: "Role",
-        roleValue: "Workspace member",
+        ownerRole: "Company Owner",
+        memberRole: "Workspace member",
         preferences: "Preferences",
         preferencesDescription:
           "Customize how BusinessOS works for you.",
@@ -72,6 +78,12 @@ export default function SettingsPage() {
         secure: "Your session is secure.",
         workspaceAccess: "Workspace access",
         fullAccess: "Full access",
+        teamManagement: "Team management",
+        teamDescription:
+          "Manage employees, invitations, roles and team access.",
+        manageTeam: "Manage team",
+        inviteEmployee: "Invite employee",
+        invitations: "Invitations & QR",
       }
     : {
         title: "الإعدادات",
@@ -87,7 +99,8 @@ export default function SettingsPage() {
         accountDescription: "معلومات حسابك",
         email: "البريد الإلكتروني",
         role: "الدور",
-        roleValue: "عضو في مساحة العمل",
+        ownerRole: "مالك الشركة",
+        memberRole: "عضو في مساحة العمل",
         preferences: "التفضيلات",
         preferencesDescription:
           "خصص طريقة عمل BusinessOS بما يناسبك.",
@@ -117,6 +130,12 @@ export default function SettingsPage() {
         secure: "جلستك الحالية آمنة.",
         workspaceAccess: "صلاحية مساحة العمل",
         fullAccess: "صلاحية كاملة",
+        teamManagement: "إدارة الفريق",
+        teamDescription:
+          "إدارة الموظفين والدعوات والأدوار وصلاحيات الوصول.",
+        manageTeam: "إدارة الفريق",
+        inviteEmployee: "دعوة موظف",
+        invitations: "الدعوات وQR",
       };
 
   useEffect(() => {
@@ -125,9 +144,20 @@ export default function SettingsPage() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user?.email) {
+      if (!user) return;
+
+      if (user.email) {
         setEmail(user.email);
       }
+
+      const { data: membership } = await supabase
+        .from("company_members")
+        .select("role")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+
+      setIsOwner(membership?.role === "owner");
 
       const storedAi = localStorage.getItem(
         "businessos-ai-enabled"
@@ -293,6 +323,106 @@ export default function SettingsPage() {
               </div>
             </section>
 
+            {isOwner && (
+              <section className="rounded-[20px] border border-neutral-100 bg-white p-5 shadow-[0_6px_25px_rgba(0,0,0,.03)] sm:p-6">
+                <div className="mb-5 flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-white">
+                    <Users
+                      className="h-5 w-5"
+                      strokeWidth={1.8}
+                    />
+                  </div>
+
+                  <div>
+                    <h2 className="text-sm font-bold">
+                      {text.teamManagement}
+                    </h2>
+
+                    <p className="mt-1 text-[11px] text-neutral-400">
+                      {text.teamDescription}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Link
+                    href={`/${locale}/team`}
+                    className="group rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:border-black hover:bg-white"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white">
+                        <Users className="h-4 w-4" />
+                      </div>
+
+                      <ChevronRight
+                        className={`h-4 w-4 text-neutral-300 transition group-hover:text-black ${
+                          !isEnglish ? "rotate-180" : ""
+                        }`}
+                      />
+                    </div>
+
+                    <div className="mt-4 text-sm font-bold">
+                      {text.manageTeam}
+                    </div>
+
+                    <div className="mt-1 text-[10px] text-neutral-400">
+                      {text.teamDescription}
+                    </div>
+                  </Link>
+
+                  <Link
+                    href={`/${locale}/team`}
+                    className="group rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:border-black hover:bg-white"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100">
+                        <Mail className="h-4 w-4" />
+                      </div>
+
+                      <ChevronRight
+                        className={`h-4 w-4 text-neutral-300 transition group-hover:text-black ${
+                          !isEnglish ? "rotate-180" : ""
+                        }`}
+                      />
+                    </div>
+
+                    <div className="mt-4 text-sm font-bold">
+                      {text.inviteEmployee}
+                    </div>
+
+                    <div className="mt-1 text-[10px] text-neutral-400">
+                      {text.inviteEmployee}
+                    </div>
+                  </Link>
+
+                  <Link
+                    href={`/${locale}/team`}
+                    className="group rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:border-black hover:bg-white"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100">
+                        <QrCode className="h-4 w-4" />
+                      </div>
+
+                      <ChevronRight
+                        className={`h-4 w-4 text-neutral-300 transition group-hover:text-black ${
+                          !isEnglish ? "rotate-180" : ""
+                        }`}
+                      />
+                    </div>
+
+                    <div className="mt-4 text-sm font-bold">
+                      {text.invitations}
+                    </div>
+
+                    <div className="mt-1 text-[10px] text-neutral-400">
+                      {text.invitations}
+                    </div>
+                  </Link>
+                </div>
+              </section>
+            )}
+
             <section className="rounded-[20px] border border-neutral-100 bg-white p-5 shadow-[0_6px_25px_rgba(0,0,0,.03)] sm:p-6">
               <div className="mb-5 flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-100">
@@ -330,7 +460,9 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="mt-2 text-sm font-semibold">
-                    {text.roleValue}
+                    {isOwner
+                      ? text.ownerRole
+                      : text.memberRole}
                   </div>
                 </div>
               </div>
