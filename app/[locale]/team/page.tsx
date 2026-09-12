@@ -279,7 +279,7 @@ export default function TeamPage() {
       window.location.pathname.match(/^\/(ar|en)(?:\/|$)/)?.[1] ||
       "ar";
 
-    return `${window.location.origin}/${locale}/invite/${token}`;
+    return `https://businessos-sable.vercel.app/${locale}/invite/${token}`;
   }
 
   async function copyInvite(token: string) {
@@ -718,3 +718,4 @@ export default function TeamPage() {
     </main>
   );
 }
+
