@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -16,9 +16,26 @@ export default function RegisterPage() {
   const [businessType, setBusinessType] = useState("");
   const [password, setPassword] = useState("");
 
+  const [inviteToken, setInviteToken] = useState("");
+  const [isInviteRegistration, setIsInviteRegistration] =
+    useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(
+      window.location.search
+    );
+
+    const token = params.get("invite") || "";
+
+    if (token) {
+      setInviteToken(token);
+      setIsInviteRegistration(true);
+    }
+  }, []);
 
   const businessTypes = [
     {
@@ -31,11 +48,15 @@ export default function RegisterPage() {
     },
     {
       value: "education",
-      label: isEnglish ? "Educational Platform" : "منصة تعليمية",
+      label: isEnglish
+        ? "Educational Platform"
+        : "منصة تعليمية",
     },
     {
       value: "store",
-      label: isEnglish ? "Store / E-commerce" : "متجر / تجارة إلكترونية",
+      label: isEnglish
+        ? "Store / E-commerce"
+        : "متجر / تجارة إلكترونية",
     },
     {
       value: "agency",
@@ -63,7 +84,10 @@ export default function RegisterPage() {
       });
 
     if (companyError) {
-      console.error("Company creation error:", companyError);
+      console.error(
+        "Company creation error:",
+        companyError
+      );
 
       throw new Error(
         companyError.message ||
@@ -82,7 +106,10 @@ export default function RegisterPage() {
       });
 
     if (memberError) {
-      console.error("Company member error:", memberError);
+      console.error(
+        "Company member error:",
+        memberError
+      );
 
       throw new Error(
         memberError.message ||
@@ -90,6 +117,52 @@ export default function RegisterPage() {
             ? "Unable to link the user to the company"
             : "تعذر ربط المستخدم بالشركة")
       );
+    }
+  }
+
+  async function acceptInvitation(
+    token: string
+  ) {
+    const { data, error: acceptError } =
+      await supabase.rpc(
+        "accept_company_invitation",
+        {
+          invite_token: token,
+        }
+      );
+
+    if (acceptError) {
+      console.error(
+        "Invitation acceptance error:",
+        acceptError
+      );
+
+      throw new Error(
+        isEnglish
+          ? "Account created, but the invitation could not be accepted."
+          : "تم إنشاء الحساب، لكن تعذر قبول الدعوة."
+      );
+    }
+
+    if (!data?.success) {
+      const message =
+        data?.error === "expired"
+          ? isEnglish
+            ? "This invitation has expired."
+            : "انتهت صلاحية الدعوة."
+          : data?.error === "already_used"
+            ? isEnglish
+              ? "This invitation has already been used."
+              : "تم استخدام هذه الدعوة بالفعل."
+            : data?.error === "invalid_invitation"
+              ? isEnglish
+                ? "This invitation is invalid."
+                : "هذه الدعوة غير صالحة."
+              : isEnglish
+                ? "Unable to accept the invitation."
+                : "تعذر قبول الدعوة.";
+
+      throw new Error(message);
     }
   }
 
@@ -102,7 +175,9 @@ export default function RegisterPage() {
     setSuccess("");
 
     if (!name.trim()) {
-      setError(isEnglish ? "Enter your name" : "اكتب اسمك");
+      setError(
+        isEnglish ? "Enter your name" : "اكتب اسمك"
+      );
       return;
     }
 
@@ -115,7 +190,7 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!companyName.trim()) {
+    if (!isInviteRegistration && !companyName.trim()) {
       setError(
         isEnglish
           ? "Enter your company name"
@@ -124,7 +199,7 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!businessType) {
+    if (!isInviteRegistration && !businessType) {
       setError(
         isEnglish
           ? "Select your business type"
@@ -138,6 +213,15 @@ export default function RegisterPage() {
         isEnglish
           ? "Password must be at least 6 characters"
           : "كلمة المرور يجب أن تكون 6 أحرف على الأقل"
+      );
+      return;
+    }
+
+    if (isInviteRegistration && !inviteToken) {
+      setError(
+        isEnglish
+          ? "Invalid invitation link."
+          : "رابط الدعوة غير صالح."
       );
       return;
     }
@@ -156,8 +240,14 @@ export default function RegisterPage() {
             emailRedirectTo,
             data: {
               full_name: name.trim(),
-              company_name: companyName.trim(),
-              business_type: businessType,
+              ...(isInviteRegistration
+                ? {
+                    invited_by_token: inviteToken,
+                  }
+                : {
+                    company_name: companyName.trim(),
+                    business_type: businessType,
+                  }),
             },
           },
         });
@@ -185,6 +275,53 @@ export default function RegisterPage() {
         );
       }
 
+      /*
+       * Employee invitation registration
+       *
+       * The employee must join the existing company.
+       * We do NOT create a new company here.
+       */
+      if (isInviteRegistration) {
+        if (!data.session) {
+          setSuccess(
+            isEnglish
+              ? "Account created. Please sign in to complete the invitation."
+              : "تم إنشاء الحساب. سجّل الدخول لإكمال قبول الدعوة."
+          );
+
+          setTimeout(() => {
+            router.replace(
+              `/${locale}/login?redirect=/invite/${encodeURIComponent(
+                inviteToken
+              )}`
+            );
+          }, 1200);
+
+          return;
+        }
+
+        await acceptInvitation(inviteToken);
+
+        setSuccess(
+          isEnglish
+            ? "Account created and you joined the company successfully 🎉"
+            : "تم إنشاء الحساب وانضممت إلى الشركة بنجاح 🎉"
+        );
+
+        setTimeout(() => {
+          router.replace(`/${locale}`);
+          router.refresh();
+        }, 1200);
+
+        return;
+      }
+
+      /*
+       * Normal registration
+       *
+       * This creates a new company and makes
+       * the first user the Company Owner.
+       */
       if (!data.session) {
         setSuccess(
           isEnglish
@@ -241,17 +378,43 @@ export default function RegisterPage() {
             </div>
 
             <h1 className="text-3xl font-black tracking-tight text-slate-950">
-              {isEnglish ? "Create Account" : "إنشاء حساب"}
+              {isInviteRegistration
+                ? isEnglish
+                  ? "Join Company"
+                  : "الانضمام إلى الشركة"
+                : isEnglish
+                  ? "Create Account"
+                  : "إنشاء حساب"}
             </h1>
 
             <p className="mt-2 text-sm text-slate-500">
-              {isEnglish
-                ? "Start managing your business with BusinessOS"
-                : "ابدأ إدارة أعمالك مع BusinessOS"}
+              {isInviteRegistration
+                ? isEnglish
+                  ? "Create your account to join the invited company"
+                  : "أنشئ حسابك للانضمام إلى الشركة التي تمت دعوتك إليها"
+                : isEnglish
+                  ? "Start managing your business with BusinessOS"
+                  : "ابدأ إدارة أعمالك مع BusinessOS"}
             </p>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl sm:p-8">
+            {isInviteRegistration && (
+              <div className="mb-5 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-center">
+                <p className="text-sm font-bold text-slate-900">
+                  {isEnglish
+                    ? "You are joining through a company invitation."
+                    : "أنت تنضم من خلال دعوة شركة."}
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {isEnglish
+                    ? "You do not need to create a company or select a business type."
+                    : "لا تحتاج إلى إنشاء شركة أو اختيار نوع نشاط."}
+                </p>
+              </div>
+            )}
+
             <form
               onSubmit={handleRegister}
               className="space-y-5"
@@ -264,9 +427,13 @@ export default function RegisterPage() {
                 <input
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) =>
+                    setName(e.target.value)
+                  }
                   placeholder={
-                    isEnglish ? "Mohammed Emad" : "محمد عماد"
+                    isEnglish
+                      ? "Mohammed Emad"
+                      : "محمد عماد"
                   }
                   disabled={loading}
                   autoComplete="name"
@@ -284,7 +451,9 @@ export default function RegisterPage() {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) =>
+                    setEmail(e.target.value)
+                  }
                   placeholder="you@example.com"
                   disabled={loading}
                   autoComplete="email"
@@ -293,62 +462,70 @@ export default function RegisterPage() {
                 />
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-bold text-slate-700">
-                  {isEnglish ? "Company Name" : "اسم الشركة"}
-                </label>
+              {!isInviteRegistration && (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      {isEnglish
+                        ? "Company Name"
+                        : "اسم الشركة"}
+                    </label>
 
-                <input
-                  type="text"
-                  value={companyName}
-                  onChange={(e) =>
-                    setCompanyName(e.target.value)
-                  }
-                  placeholder={
-                    isEnglish
-                      ? "BusinessOS Company"
-                      : "شركة BusinessOS"
-                  }
-                  disabled={loading}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
-                />
-              </div>
+                    <input
+                      type="text"
+                      value={companyName}
+                      onChange={(e) =>
+                        setCompanyName(e.target.value)
+                      }
+                      placeholder={
+                        isEnglish
+                          ? "BusinessOS Company"
+                          : "شركة BusinessOS"
+                      }
+                      disabled={loading}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      {isEnglish
+                        ? "Business Type"
+                        : "نوع النشاط"}
+                    </label>
+
+                    <select
+                      value={businessType}
+                      onChange={(e) =>
+                        setBusinessType(e.target.value)
+                      }
+                      disabled={loading}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+                    >
+                      <option value="">
+                        {isEnglish
+                          ? "Select business type"
+                          : "اختر نوع النشاط"}
+                      </option>
+
+                      {businessTypes.map((type) => (
+                        <option
+                          key={type.value}
+                          value={type.value}
+                        >
+                          {type.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="mb-2 block text-sm font-bold text-slate-700">
                   {isEnglish
-                    ? "Business Type"
-                    : "نوع النشاط"}
-                </label>
-
-                <select
-                  value={businessType}
-                  onChange={(e) =>
-                    setBusinessType(e.target.value)
-                  }
-                  disabled={loading}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
-                >
-                  <option value="">
-                    {isEnglish
-                      ? "Select business type"
-                      : "اختر نوع النشاط"}
-                  </option>
-
-                  {businessTypes.map((type) => (
-                    <option
-                      key={type.value}
-                      value={type.value}
-                    >
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-bold text-slate-700">
-                  {isEnglish ? "Password" : "كلمة المرور"}
+                    ? "Password"
+                    : "كلمة المرور"}
                 </label>
 
                 <input
@@ -392,9 +569,13 @@ export default function RegisterPage() {
                   ? isEnglish
                     ? "Creating account..."
                     : "جاري إنشاء الحساب..."
-                  : isEnglish
-                  ? "Create Account"
-                  : "إنشاء الحساب"}
+                  : isInviteRegistration
+                    ? isEnglish
+                      ? "Create Account & Join"
+                      : "إنشاء الحساب والانضمام"
+                    : isEnglish
+                      ? "Create Account"
+                      : "إنشاء الحساب"}
               </button>
             </form>
 
@@ -405,7 +586,15 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={() =>
-                  router.push(`/${locale}/login`)
+                  isInviteRegistration
+                    ? router.push(
+                        `/${locale}/login?redirect=/invite/${encodeURIComponent(
+                          inviteToken
+                        )}`
+                      )
+                    : router.push(
+                        `/${locale}/login`
+                      )
                 }
                 className="font-bold text-slate-950 hover:underline"
               >

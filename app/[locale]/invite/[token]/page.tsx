@@ -50,10 +50,11 @@ export default function InvitePage() {
   const [accepting, setAccepting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const inviteUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/${locale}/invite/${token}`
+      ? `https://businessos-sable.vercel.app/${locale}/invite/${token}`
       : "";
 
   function formatDate(date: string) {
@@ -119,9 +120,25 @@ export default function InvitePage() {
     setLoading(false);
   }
 
+  async function checkAuth() {
+    const { data } = await supabase.auth.getUser();
+    setIsLoggedIn(!!data.user);
+  }
+
   useEffect(() => {
     loadInvitation();
+    checkAuth();
   }, [token]);
+
+  function goToRegister() {
+    router.push(`/${locale}/register?invite=${encodeURIComponent(token)}`);
+  }
+
+  function goToLogin() {
+    router.push(
+      `/${locale}/login?redirect=/invite/${encodeURIComponent(token)}`
+    );
+  }
 
   async function handleAccept() {
     if (!token || accepting || !invitation) {
@@ -155,9 +172,8 @@ export default function InvitePage() {
     } = await supabase.auth.getUser();
 
     if (!userData.user) {
-      router.push(
-        `/${locale}/login?redirect=/invite/${token}`
-      );
+      setAccepting(false);
+      goToRegister();
       return;
     }
 
@@ -196,9 +212,9 @@ export default function InvitePage() {
               ? isEnglish
                 ? "This invitation is invalid."
                 : "هذه الدعوة غير صالحة."
-                : isEnglish
-                  ? "Unable to accept this invitation."
-                  : "تعذر قبول هذه الدعوة.";
+              : isEnglish
+                ? "Unable to accept this invitation."
+                : "تعذر قبول هذه الدعوة.";
 
       setError(message);
       setAccepting(false);
@@ -225,6 +241,7 @@ export default function InvitePage() {
       >
         <div className="rounded-2xl border border-neutral-200 bg-white px-8 py-7 text-center shadow-sm">
           <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-neutral-200 border-t-black" />
+
           <p className="text-sm font-semibold text-neutral-700">
             {isEnglish
               ? "Loading invitation..."
@@ -242,7 +259,6 @@ export default function InvitePage() {
     >
       <div className="mx-auto flex min-h-[calc(100vh-80px)] max-w-lg items-center justify-center">
         <div className="w-full rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
-          {/* Brand */}
           <div className="mb-8 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-black text-lg font-black text-white">
               B
@@ -271,15 +287,16 @@ export default function InvitePage() {
 
               <button
                 type="button"
-                onClick={() => router.push(`/${locale}/login`)}
+                onClick={goToLogin}
                 className="mt-5 rounded-xl bg-black px-5 py-3 text-sm font-bold text-white transition hover:bg-neutral-800"
               >
-                {isEnglish ? "Go to login" : "الذهاب لتسجيل الدخول"}
+                {isEnglish
+                  ? "Go to login"
+                  : "الذهاب لتسجيل الدخول"}
               </button>
             </div>
           ) : invitation ? (
             <>
-              {/* Company */}
               <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-5 text-center">
                 <p className="text-xs font-semibold text-neutral-400">
                   {isEnglish
@@ -292,9 +309,7 @@ export default function InvitePage() {
                 </h2>
 
                 <p className="mt-2 text-sm text-neutral-500">
-                  {isEnglish
-                    ? "as"
-                    : "بصفة"}{" "}
+                  {isEnglish ? "as" : "بصفة"}{" "}
                   <span className="font-bold text-black">
                     {roleLabels[invitation.role]?.[
                       isEnglish ? "en" : "ar"
@@ -303,7 +318,6 @@ export default function InvitePage() {
                 </p>
               </div>
 
-              {/* QR */}
               <div className="mt-6 flex justify-center">
                 <div className="rounded-2xl border border-neutral-200 bg-white p-4">
                   {inviteUrl && (
@@ -323,7 +337,6 @@ export default function InvitePage() {
                   : "يمكن مسح رمز QR لفتح هذه الدعوة."}
               </p>
 
-              {/* Expiration */}
               <div className="mt-6 rounded-2xl border border-neutral-200 p-4">
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-xs font-semibold text-neutral-500">
@@ -344,12 +357,13 @@ export default function InvitePage() {
                 </div>
               </div>
 
-              {/* Email */}
               {invitation.email && (
                 <div className="mt-3 rounded-2xl border border-neutral-200 p-4">
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-xs font-semibold text-neutral-500">
-                      {isEnglish ? "Email" : "البريد الإلكتروني"}
+                      {isEnglish
+                        ? "Email"
+                        : "البريد الإلكتروني"}
                     </span>
 
                     <span className="max-w-[60%] truncate text-xs font-bold text-black">
@@ -359,41 +373,61 @@ export default function InvitePage() {
                 </div>
               )}
 
-              {/* Success */}
               {success && (
                 <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center text-sm font-bold text-emerald-700">
                   {success}
                 </div>
               )}
 
-              {/* Accept */}
               {!success && (
-                <button
-                  type="button"
-                  onClick={handleAccept}
-                  disabled={
-                    accepting ||
-                    !!invitation.accepted_at ||
-                    isExpired(invitation.expires_at)
-                  }
-                  className="mt-6 flex w-full items-center justify-center rounded-2xl bg-black px-5 py-4 text-sm font-bold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
-                >
-                  {accepting
-                    ? isEnglish
-                      ? "Joining..."
-                      : "جاري الانضمام..."
-                    : isExpired(invitation.expires_at)
+                <div className="mt-6 space-y-3">
+                  <button
+                    type="button"
+                    onClick={
+                      isLoggedIn
+                        ? handleAccept
+                        : goToRegister
+                    }
+                    disabled={
+                      accepting ||
+                      !!invitation.accepted_at ||
+                      isExpired(invitation.expires_at)
+                    }
+                    className="flex w-full items-center justify-center rounded-2xl bg-black px-5 py-4 text-sm font-bold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+                  >
+                    {accepting
                       ? isEnglish
-                        ? "Invitation expired"
-                        : "انتهت صلاحية الدعوة"
-                      : invitation.accepted_at
+                        ? "Joining..."
+                        : "جاري الانضمام..."
+                      : isExpired(invitation.expires_at)
                         ? isEnglish
-                          ? "Invitation already used"
-                          : "تم استخدام الدعوة"
-                        : isEnglish
-                          ? "Accept invitation"
-                          : "قبول الدعوة"}
-                </button>
+                          ? "Invitation expired"
+                          : "انتهت صلاحية الدعوة"
+                        : invitation.accepted_at
+                          ? isEnglish
+                            ? "Invitation already used"
+                            : "تم استخدام الدعوة"
+                          : isLoggedIn
+                            ? isEnglish
+                              ? "Accept invitation"
+                              : "قبول الدعوة"
+                            : isEnglish
+                              ? "Create account & join"
+                              : "إنشاء حساب والانضمام"}
+                  </button>
+
+                  {!isLoggedIn && (
+                    <button
+                      type="button"
+                      onClick={goToLogin}
+                      className="w-full rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-sm font-bold text-black transition hover:bg-neutral-50"
+                    >
+                      {isEnglish
+                        ? "I already have an account"
+                        : "لدي حساب بالفعل"}
+                    </button>
+                  )}
+                </div>
               )}
             </>
           ) : null}
