@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocale } from "next-intl";
 import { useEffect, useState } from "react";
 import {
   Package,
@@ -30,6 +31,9 @@ type Order = {
 };
 
 export default function OrdersPage() {
+  const locale = useLocale();
+  const isEnglish = locale === "en";
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -44,6 +48,143 @@ export default function OrdersPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const text = isEnglish
+    ? {
+        title: "Orders",
+        description:
+          "Manage customer orders and track the status of every order in one place.",
+        addOrder: "Add Order",
+        close: "Close",
+        newOrder: "New Order",
+        addNewOrder: "Add New Order",
+        enterBasicData: "Enter the basic information for the order.",
+        customer: "Customer",
+        customerName: "Customer",
+        selectCustomer: "Select customer",
+        service: "Service",
+        servicePlaceholder: "Example: Website design",
+        amount: "Amount",
+        amountPlaceholder: "Example: 2500",
+        status: "Status",
+        new: "New",
+        inProgress: "In Progress",
+        completed: "Completed",
+        cancelled: "Cancelled",
+        noCustomers:
+          "There are no customers yet. Add a customer first from the Customers page.",
+        saving: "Saving...",
+        saveOrder: "Save Order",
+        cancel: "Cancel",
+        totalOrders: "Total Orders",
+        newOrders: "New Orders",
+        activeOrders: "In Progress",
+        completedOrders: "Completed Orders",
+        orders: "Orders",
+        ordersList: "Orders List",
+        allOrders: "All orders registered for your company.",
+        orderCount: "orders",
+        noOrders: "No orders yet",
+        noOrdersDescription:
+          "Add your first order to start tracking your business.",
+        addFirstOrder: "Add First Order",
+        amountColumn: "Amount",
+        statusColumn: "Status",
+        date: "Date",
+        action: "Action",
+        customerLabel: "Customer",
+        egp: "EGP",
+        deleteOrder: "Delete order",
+        cancelledOrders: "Cancelled Orders",
+        cancelledDescription: "Orders that have been cancelled.",
+        loading: "Loading orders...",
+        loginRequired: "You must log in first.",
+        companyError:
+          "Unable to determine the company associated with your account.",
+        noCompany: "No company is associated with this account.",
+        customersError: "An error occurred while loading customers.",
+        ordersError: "An error occurred while loading orders.",
+        saveError: "An error occurred while saving the order.",
+        addError: "An error occurred while adding the order.",
+        deleteError: "An error occurred while deleting the order.",
+        chooseCustomer: "Please select a customer.",
+        enterService: "Please enter the service.",
+        companyRequired: "Your company could not be found.",
+        customerNotFound: "The selected customer does not exist.",
+        validAmount: "Please enter a valid amount.",
+        confirmDelete: "Are you sure you want to delete this order?",
+        unspecifiedCustomer: "Unspecified customer",
+      }
+    : {
+        title: "الطلبات",
+        description:
+          "إدارة طلبات العملاء ومتابعة حالة كل طلب من مكان واحد.",
+        addOrder: "إضافة طلب",
+        close: "إغلاق",
+        newOrder: "طلب جديد",
+        addNewOrder: "إضافة طلب جديد",
+        enterBasicData: "أدخل البيانات الأساسية للطلب.",
+        customer: "العميل",
+        customerName: "اسم العميل",
+        selectCustomer: "اختر العميل",
+        service: "الخدمة",
+        servicePlaceholder: "مثال: تصميم موقع",
+        amount: "المبلغ",
+        amountPlaceholder: "مثال: 2500",
+        status: "الحالة",
+        new: "جديد",
+        inProgress: "قيد المتابعة",
+        completed: "مكتمل",
+        cancelled: "ملغي",
+        noCustomers:
+          "لا يوجد عملاء حاليًا. أضف عميلًا أولًا من صفحة العملاء.",
+        saving: "جاري الحفظ...",
+        saveOrder: "حفظ الطلب",
+        cancel: "إلغاء",
+        totalOrders: "إجمالي الطلبات",
+        newOrders: "طلبات جديدة",
+        activeOrders: "قيد المتابعة",
+        completedOrders: "طلبات مكتملة",
+        orders: "الطلبات",
+        ordersList: "قائمة الطلبات",
+        allOrders: "جميع الطلبات المسجلة في شركتك.",
+        orderCount: "طلب",
+        noOrders: "لا توجد طلبات حتى الآن",
+        noOrdersDescription: "أضف أول طلب لبدء متابعة أعمالك.",
+        addFirstOrder: "إضافة أول طلب",
+        amountColumn: "المبلغ",
+        statusColumn: "الحالة",
+        date: "التاريخ",
+        action: "إجراء",
+        customerLabel: "عميل",
+        egp: "جنيه",
+        deleteOrder: "حذف الطلب",
+        cancelledOrders: "الطلبات الملغاة",
+        cancelledDescription: "الطلبات التي تم إلغاؤها.",
+        loading: "جاري تحميل الطلبات...",
+        loginRequired: "يجب تسجيل الدخول أولًا.",
+        companyError: "تعذر تحديد الشركة الخاصة بحسابك.",
+        noCompany: "لا توجد شركة مرتبطة بهذا الحساب.",
+        customersError: "حدث خطأ أثناء تحميل العملاء.",
+        ordersError: "حدث خطأ أثناء تحميل الطلبات.",
+        saveError: "حدث خطأ أثناء حفظ الطلب.",
+        addError: "حدث خطأ أثناء إضافة الطلب.",
+        deleteError: "حدث خطأ أثناء حذف الطلب.",
+        chooseCustomer: "يرجى اختيار العميل.",
+        enterService: "يرجى إدخال الخدمة.",
+        companyRequired: "لم يتم العثور على الشركة الخاصة بحسابك.",
+        customerNotFound: "العميل المحدد غير موجود.",
+        validAmount: "يرجى إدخال مبلغ صحيح.",
+        confirmDelete: "هل أنت متأكد من حذف هذا الطلب؟",
+        unspecifiedCustomer: "عميل غير محدد",
+      };
+
+  const statusLabels: Record<OrderStatus, string> = {
+    جديد: text.new,
+    "قيد المتابعة": text.inProgress,
+    مكتمل: text.completed,
+    ملغي: text.cancelled,
+  };
+
   async function loadOrders() {
     try {
       setError("");
@@ -54,7 +195,7 @@ export default function OrdersPage() {
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        setError("يجب تسجيل الدخول أولًا.");
+        setError(text.loginRequired);
         setIsLoaded(true);
         return;
       }
@@ -68,13 +209,13 @@ export default function OrdersPage() {
 
       if (membershipError) {
         console.error("Company membership error:", membershipError);
-        setError("تعذر تحديد الشركة الخاصة بحسابك.");
+        setError(text.companyError);
         setIsLoaded(true);
         return;
       }
 
       if (!membership?.company_id) {
-        setError("لا توجد شركة مرتبطة بهذا الحساب.");
+        setError(text.noCompany);
         setIsLoaded(true);
         return;
       }
@@ -92,7 +233,7 @@ export default function OrdersPage() {
 
       if (customersError) {
         console.error("Customers fetch error:", customersError);
-        setError("حدث خطأ أثناء تحميل العملاء.");
+        setError(text.customersError);
         setIsLoaded(true);
         return;
       }
@@ -100,7 +241,7 @@ export default function OrdersPage() {
       setCustomers(
         (customersData || []).map((customer) => ({
           id: String(customer.id),
-          name: customer.name || "عميل غير محدد",
+          name: customer.name || text.unspecifiedCustomer,
         }))
       );
 
@@ -114,7 +255,7 @@ export default function OrdersPage() {
 
       if (ordersError) {
         console.error("Orders fetch error:", ordersError);
-        setError("حدث خطأ أثناء تحميل الطلبات.");
+        setError(text.ordersError);
         setIsLoaded(true);
         return;
       }
@@ -124,7 +265,8 @@ export default function OrdersPage() {
         customerId: order.customer_id
           ? String(order.customer_id)
           : null,
-        customer: order.customer_name || "عميل غير محدد",
+        customer:
+          order.customer_name || text.unspecifiedCustomer,
         service: order.service || "",
         amount:
           order.total !== null && order.total !== undefined
@@ -140,8 +282,8 @@ export default function OrdersPage() {
 
       setOrders(formattedOrders);
     } catch (error) {
-      console.error("حدث خطأ أثناء تحميل الطلبات:", error);
-      setError("حدث خطأ أثناء تحميل الطلبات.");
+      console.error("Orders loading error:", error);
+      setError(text.ordersError);
     } finally {
       setIsLoaded(true);
     }
@@ -153,17 +295,17 @@ export default function OrdersPage() {
 
   async function addOrder() {
     if (!customerId) {
-      alert("يرجى اختيار العميل.");
+      alert(text.chooseCustomer);
       return;
     }
 
     if (!service.trim()) {
-      alert("يرجى إدخال الخدمة.");
+      alert(text.enterService);
       return;
     }
 
     if (!companyId) {
-      alert("لم يتم العثور على الشركة الخاصة بحسابك.");
+      alert(text.companyRequired);
       return;
     }
 
@@ -172,7 +314,7 @@ export default function OrdersPage() {
     );
 
     if (!selectedCustomer) {
-      alert("العميل المحدد غير موجود.");
+      alert(text.customerNotFound);
       return;
     }
 
@@ -186,7 +328,7 @@ export default function OrdersPage() {
         amount.trim() &&
         (Number.isNaN(parsedAmount) || parsedAmount < 0)
       ) {
-        alert("يرجى إدخال مبلغ صحيح.");
+        alert(text.validAmount);
         setSaving(false);
         return;
       }
@@ -208,7 +350,7 @@ export default function OrdersPage() {
 
       if (insertError) {
         console.error("Order insert error:", insertError);
-        setError("حدث خطأ أثناء حفظ الطلب.");
+        setError(text.saveError);
         return;
       }
 
@@ -218,7 +360,8 @@ export default function OrdersPage() {
           customerId: data.customer_id
             ? String(data.customer_id)
             : selectedCustomer.id,
-          customer: data.customer_name || selectedCustomer.name,
+          customer:
+            data.customer_name || selectedCustomer.name,
           service: data.service || service.trim(),
           amount:
             data.total !== null && data.total !== undefined
@@ -232,7 +375,10 @@ export default function OrdersPage() {
             : new Date().toISOString().split("T")[0],
         };
 
-        setOrders((currentOrders) => [newOrder, ...currentOrders]);
+        setOrders((currentOrders) => [
+          newOrder,
+          ...currentOrders,
+        ]);
       }
 
       setCustomerId("");
@@ -241,17 +387,15 @@ export default function OrdersPage() {
       setStatus("جديد");
       setShowForm(false);
     } catch (error) {
-      console.error("حدث خطأ أثناء إضافة الطلب:", error);
-      setError("حدث خطأ أثناء إضافة الطلب.");
+      console.error("Order add error:", error);
+      setError(text.addError);
     } finally {
       setSaving(false);
     }
   }
 
   async function deleteOrder(id: string) {
-    const confirmed = window.confirm(
-      "هل أنت متأكد من حذف هذا الطلب؟"
-    );
+    const confirmed = window.confirm(text.confirmDelete);
 
     if (!confirmed) return;
 
@@ -265,7 +409,7 @@ export default function OrdersPage() {
 
       if (deleteError) {
         console.error("Order delete error:", deleteError);
-        setError("حدث خطأ أثناء حذف الطلب.");
+        setError(text.deleteError);
         return;
       }
 
@@ -273,8 +417,8 @@ export default function OrdersPage() {
         currentOrders.filter((order) => order.id !== id)
       );
     } catch (error) {
-      console.error("حدث خطأ أثناء حذف الطلب:", error);
-      setError("حدث خطأ أثناء حذف الطلب.");
+      console.error("Order delete error:", error);
+      setError(text.deleteError);
     }
   }
 
@@ -297,12 +441,12 @@ export default function OrdersPage() {
   if (!isLoaded) {
     return (
       <main
-        dir="rtl"
+        dir={isEnglish ? "ltr" : "rtl"}
         className="flex min-h-[calc(100vh-40px)] items-center justify-center rounded-[24px] bg-[#f8f8f8]"
       >
         <div className="flex items-center gap-3 text-sm text-neutral-500">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-200 border-t-black" />
-          جاري تحميل الطلبات...
+          {text.loading}
         </div>
       </main>
     );
@@ -310,11 +454,10 @@ export default function OrdersPage() {
 
   return (
     <main
-      dir="rtl"
+      dir={isEnglish ? "ltr" : "rtl"}
       className="min-h-[calc(100vh-40px)] bg-[#f3f3f3] text-[#111]"
     >
       <div className="mx-auto max-w-[1500px]">
-        {/* Header */}
         <header className="rounded-[24px] bg-white px-5 py-6 shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:px-7">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -329,11 +472,11 @@ export default function OrdersPage() {
               </div>
 
               <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">
-                الطلبات
+                {text.title}
               </h1>
 
               <p className="mt-2 max-w-xl text-sm leading-6 text-neutral-500">
-                إدارة طلبات العملاء ومتابعة حالة كل طلب من مكان واحد.
+                {text.description}
               </p>
             </div>
 
@@ -344,12 +487,12 @@ export default function OrdersPage() {
               {showForm ? (
                 <>
                   <X className="h-4 w-4" />
-                  إغلاق
+                  {text.close}
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4" />
-                  إضافة طلب
+                  {text.addOrder}
                 </>
               )}
             </button>
@@ -357,7 +500,6 @@ export default function OrdersPage() {
         </header>
 
         <div className="mt-5 space-y-5">
-          {/* Error */}
           {error && (
             <div className="flex items-start gap-3 rounded-2xl border border-red-100 bg-white p-4 text-sm text-red-600 shadow-[0_5px_25px_rgba(0,0,0,.03)]">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -365,21 +507,20 @@ export default function OrdersPage() {
             </div>
           )}
 
-          {/* Add Order Form */}
           {showForm && (
             <section className="rounded-[24px] bg-white p-5 shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:p-7">
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
-                    New Order
+                    {text.newOrder}
                   </p>
 
                   <h2 className="mt-2 text-lg font-bold">
-                    إضافة طلب جديد
+                    {text.addNewOrder}
                   </h2>
 
                   <p className="mt-1 text-xs text-neutral-500">
-                    أدخل البيانات الأساسية للطلب.
+                    {text.enterBasicData}
                   </p>
                 </div>
 
@@ -393,52 +534,61 @@ export default function OrdersPage() {
 
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <FormFieldSelect
-                  label="اسم العميل"
+                  label={text.customerName}
                   value={customerId}
                   onChange={setCustomerId}
                   options={customers.map((customer) => ({
                     value: customer.id,
                     label: customer.name,
                   }))}
-                  placeholder="اختر العميل"
+                  placeholder={text.selectCustomer}
                 />
 
                 <FormField
-                  label="الخدمة"
+                  label={text.service}
                   value={service}
                   onChange={setService}
-                  placeholder="مثال: تصميم موقع"
+                  placeholder={text.servicePlaceholder}
                 />
 
                 <FormField
-                  label="المبلغ"
+                  label={text.amount}
                   value={amount}
                   onChange={setAmount}
-                  placeholder="مثال: 2500"
+                  placeholder={text.amountPlaceholder}
                   type="number"
                 />
 
                 <FormFieldSelect
-                  label="الحالة"
+                  label={text.status}
                   value={status}
                   onChange={(value) =>
                     setStatus(value as OrderStatus)
                   }
                   options={[
-                    { value: "جديد", label: "جديد" },
+                    {
+                      value: "جديد",
+                      label: text.new,
+                    },
                     {
                       value: "قيد المتابعة",
-                      label: "قيد المتابعة",
+                      label: text.inProgress,
                     },
-                    { value: "مكتمل", label: "مكتمل" },
-                    { value: "ملغي", label: "ملغي" },
+                    {
+                      value: "مكتمل",
+                      label: text.completed,
+                    },
+                    {
+                      value: "ملغي",
+                      label: text.cancelled,
+                    },
                   ]}
                 />
               </div>
 
               {customers.length === 0 && (
                 <div className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
-                  لا يوجد عملاء حاليًا. أضف عميلًا أولًا من صفحة العملاء.
+                  {text.noCustomers}
                 </div>
               )}
 
@@ -448,7 +598,7 @@ export default function OrdersPage() {
                   disabled={saving}
                   className="h-11 rounded-xl bg-black px-6 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {saving ? "جاري الحفظ..." : "حفظ الطلب"}
+                  {saving ? text.saving : text.saveOrder}
                 </button>
 
                 <button
@@ -456,40 +606,38 @@ export default function OrdersPage() {
                   disabled={saving}
                   className="h-11 rounded-xl border border-neutral-200 bg-white px-6 text-sm font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  إلغاء
+                  {text.cancel}
                 </button>
               </div>
             </section>
           )}
 
-          {/* Statistics */}
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
-              title="إجمالي الطلبات"
+              title={text.totalOrders}
               value={orders.length}
               icon={<Package className="h-4 w-4" />}
             />
 
             <StatCard
-              title="طلبات جديدة"
+              title={text.newOrders}
               value={newOrders.length}
               icon={<AlertCircle className="h-4 w-4" />}
             />
 
             <StatCard
-              title="قيد المتابعة"
+              title={text.activeOrders}
               value={activeOrders.length}
               icon={<Clock3 className="h-4 w-4" />}
             />
 
             <StatCard
-              title="طلبات مكتملة"
+              title={text.completedOrders}
               value={completedOrders.length}
               icon={<CheckCircle2 className="h-4 w-4" />}
             />
           </section>
 
-          {/* Orders */}
           <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_10px_45px_rgba(0,0,0,.05)]">
             <div className="flex flex-col gap-4 border-b border-neutral-100 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7">
               <div>
@@ -498,17 +646,17 @@ export default function OrdersPage() {
                 </p>
 
                 <h2 className="mt-2 text-lg font-bold">
-                  قائمة الطلبات
+                  {text.ordersList}
                 </h2>
 
                 <p className="mt-1 text-xs text-neutral-500">
-                  جميع الطلبات المسجلة في شركتك.
+                  {text.allOrders}
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
                 <div className="rounded-xl bg-neutral-100 px-3 py-2 text-xs font-semibold text-neutral-600">
-                  {orders.length} طلب
+                  {orders.length} {text.orderCount}
                 </div>
               </div>
             </div>
@@ -520,11 +668,11 @@ export default function OrdersPage() {
                 </div>
 
                 <p className="mt-5 font-semibold">
-                  لا توجد طلبات حتى الآن
+                  {text.noOrders}
                 </p>
 
                 <p className="mt-2 text-sm text-neutral-500">
-                  أضف أول طلب لبدء متابعة أعمالك.
+                  {text.noOrdersDescription}
                 </p>
 
                 <button
@@ -532,36 +680,40 @@ export default function OrdersPage() {
                   className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-black px-4 text-xs font-semibold text-white transition hover:bg-neutral-800"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  إضافة أول طلب
+                  {text.addFirstOrder}
                 </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[850px] text-right">
+                <table
+                  className={`w-full min-w-[850px] ${
+                    isEnglish ? "text-left" : "text-right"
+                  }`}
+                >
                   <thead>
                     <tr className="border-b border-neutral-100 bg-[#fafafa]">
                       <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                        العميل
+                        {text.customer}
                       </th>
 
                       <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                        الخدمة
+                        {text.service}
                       </th>
 
                       <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                        المبلغ
+                        {text.amountColumn}
                       </th>
 
                       <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                        الحالة
+                        {text.statusColumn}
                       </th>
 
                       <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                        التاريخ
+                        {text.date}
                       </th>
 
                       <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                        إجراء
+                        {text.action}
                       </th>
                     </tr>
                   </thead>
@@ -584,7 +736,7 @@ export default function OrdersPage() {
                               </p>
 
                               <p className="mt-0.5 text-[10px] text-neutral-400">
-                                عميل
+                                {text.customerLabel}
                               </p>
                             </div>
                           </div>
@@ -597,13 +749,16 @@ export default function OrdersPage() {
                         <td className="px-6 py-5">
                           <span className="text-sm font-semibold">
                             {order.amount
-                              ? `${order.amount} جنيه`
+                              ? `${order.amount} ${text.egp}`
                               : "-"}
                           </span>
                         </td>
 
                         <td className="px-6 py-5">
-                          <StatusBadge status={order.status} />
+                          <StatusBadge
+                            status={order.status}
+                            label={statusLabels[order.status]}
+                          />
                         </td>
 
                         <td className="px-6 py-5 text-xs text-neutral-500">
@@ -614,7 +769,7 @@ export default function OrdersPage() {
                           <button
                             onClick={() => deleteOrder(order.id)}
                             className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
-                            title="حذف الطلب"
+                            title={text.deleteOrder}
                           >
                             <Trash2
                               className="h-3.5 w-3.5"
@@ -630,17 +785,16 @@ export default function OrdersPage() {
             )}
           </section>
 
-          {/* Cancelled */}
           {cancelledOrders.length > 0 && (
             <section className="rounded-[24px] bg-white p-5 shadow-[0_10px_45px_rgba(0,0,0,.04)] sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold">
-                    الطلبات الملغاة
+                    {text.cancelledOrders}
                   </p>
 
                   <p className="mt-1 text-xs text-neutral-500">
-                    الطلبات التي تم إلغاؤها.
+                    {text.cancelledDescription}
                   </p>
                 </div>
 
@@ -753,7 +907,9 @@ function FormFieldSelect({
         onChange={(e) => onChange(e.target.value)}
         className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-4 text-sm outline-none transition focus:border-black focus:ring-2 focus:ring-neutral-100"
       >
-        {placeholder && <option value="">{placeholder}</option>}
+        {placeholder && (
+          <option value="">{placeholder}</option>
+        )}
 
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -767,8 +923,10 @@ function FormFieldSelect({
 
 function StatusBadge({
   status,
+  label,
 }: {
   status: OrderStatus;
+  label: string;
 }) {
   const styles: Record<OrderStatus, string> = {
     جديد: "bg-neutral-100 text-neutral-700",
@@ -792,7 +950,7 @@ function StatusBadge({
         className={`h-1.5 w-1.5 rounded-full ${dots[status]}`}
       />
 
-      {status}
+      {label}
     </span>
   );
 }

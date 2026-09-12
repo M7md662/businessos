@@ -54,17 +54,15 @@ export default function MainNavigation({
           .maybeSingle();
 
         if (error) {
-          console.error("Admin permission check failed:", error);
-
+          // عدم وجود صلاحية Admin ليس خطأ في واجهة المستخدم.
+          // نعتبر المستخدم غير Admin بدون إظهار خطأ في Console.
           if (mounted) {
             setIsAdmin(false);
           }
         } else if (mounted) {
           setIsAdmin(Boolean(admin));
         }
-      } catch (error) {
-        console.error("Admin permission check failed:", error);
-
+      } catch {
         if (mounted) {
           setIsAdmin(false);
         }
