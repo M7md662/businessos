@@ -31,7 +31,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("invite") || "";
+    const token = params.get("invite")?.trim() || "";
 
     if (token) {
       setInviteToken(token);
@@ -72,7 +72,6 @@ export default function RegisterPage() {
   ];
 
   async function createCompanyForUser(
-    _userId: string,
     workspaceName: string,
     selectedBusinessType: string
   ) {
@@ -164,8 +163,8 @@ export default function RegisterPage() {
       if (invitationError === "email_mismatch") {
         throw new Error(
           isEnglish
-            ? "This invitation was sent to a different email address. Please use the email address that received the invitation."
-            : "هذه الدعوة موجهة إلى بريد إلكتروني مختلف. استخدم البريد الإلكتروني الذي استلم الدعوة."
+            ? "This invitation was sent to a different email address."
+            : "هذه الدعوة موجهة إلى بريد إلكتروني مختلف."
         );
       }
 
@@ -198,15 +197,6 @@ export default function RegisterPage() {
         isEnglish
           ? "Choose how you want to use BusinessOS."
           : "اختر أولًا كيف تريد استخدام BusinessOS."
-      );
-      return;
-    }
-
-    if (registrationMode === "employee" && !isInviteRegistration) {
-      setError(
-        isEnglish
-          ? "Employees must join a company through an invitation link."
-          : "الموظفون يجب أن ينضموا إلى الشركة من خلال رابط دعوة."
       );
       return;
     }
@@ -283,14 +273,7 @@ export default function RegisterPage() {
             emailRedirectTo,
             data: {
               full_name: name.trim(),
-              ...(isInviteRegistration
-                ? {
-                    invited_by_token: inviteToken,
-                  }
-                : {
-                    company_name: companyName.trim(),
-                    business_type: businessType,
-                  }),
+              registration_type: registrationMode,
             },
           },
         });
@@ -318,7 +301,15 @@ export default function RegisterPage() {
         );
       }
 
-      if (isInviteRegistration) {
+      /*
+       * Employee + invitation:
+       * create the account, then immediately accept
+       * the invitation when a session is available.
+       */
+      if (
+        registrationMode === "employee" &&
+        isInviteRegistration
+      ) {
         if (!data.session) {
           setSuccess(
             isEnglish
@@ -353,32 +344,54 @@ export default function RegisterPage() {
         return;
       }
 
-      if (!data.session) {
+      /*
+       * Owner:
+       * create the company and owner membership.
+       */
+      if (registrationMode === "owner") {
+        if (!data.session) {
+          setSuccess(
+            isEnglish
+              ? "Account created. Check your email and click the confirmation link."
+              : "تم إنشاء الحساب. تحقق من بريدك الإلكتروني واضغط على رابط التأكيد."
+          );
+
+          return;
+        }
+
+        await createCompanyForUser(
+          companyName.trim(),
+          businessType
+        );
+
         setSuccess(
           isEnglish
-            ? "Account created. Check your email and click the confirmation link."
-            : "تم إنشاء الحساب. تحقق من بريدك الإلكتروني واضغط على رابط التأكيد."
+            ? "Account and company created successfully 🎉"
+            : "تم إنشاء الحساب والشركة بنجاح 🎉"
         );
+
+        setTimeout(() => {
+          router.replace(`/${locale}`);
+          router.refresh();
+        }, 1000);
 
         return;
       }
 
-      await createCompanyForUser(
-        data.user.id,
-        companyName.trim(),
-        businessType
-      );
-
+      /*
+       * Employee without invitation:
+       * The account exists, but it has no company membership.
+       * The user must wait until a company invites them.
+       */
       setSuccess(
         isEnglish
-          ? "Account and company created successfully 🎉"
-          : "تم إنشاء الحساب والشركة بنجاح 🎉"
+          ? "Your employee account was created successfully. You are currently waiting for a company invitation."
+          : "تم إنشاء حساب الموظف بنجاح. حسابك الآن في انتظار دعوة من شركة."
       );
 
       setTimeout(() => {
-        router.replace(`/${locale}`);
-        router.refresh();
-      }, 1000);
+        router.replace(`/${locale}/login`);
+      }, 1800);
     } catch (err: unknown) {
       console.error("Register error:", err);
 
@@ -427,8 +440,8 @@ export default function RegisterPage() {
                   : "الانضمام إلى الشركة"
                 : registrationMode === "employee"
                   ? isEnglish
-                    ? "Join as Employee"
-                    : "الانضمام كموظف"
+                    ? "Create Employee Account"
+                    : "إنشاء حساب موظف"
                   : registrationMode === "owner"
                     ? isEnglish
                       ? "Create Your Business"
@@ -449,8 +462,8 @@ export default function RegisterPage() {
                     : "اختر كيف تريد استخدام BusinessOS"
                   : registrationMode === "employee"
                     ? isEnglish
-                      ? "Join your company using an invitation"
-                      : "انضم إلى شركتك باستخدام دعوة"
+                      ? "Create an employee account and wait for a company invitation"
+                      : "أنشئ حساب موظف وانتظر دعوة من شركة"
                     : isEnglish
                       ? "Create and manage your business with BusinessOS"
                       : "أنشئ وأدر أعمالك باستخدام BusinessOS"}
@@ -468,8 +481,8 @@ export default function RegisterPage() {
 
                 <p className="mt-1 text-xs leading-5 text-slate-500">
                   {isEnglish
-                    ? "You do not need to create a company or select a business type."
-                    : "لا تحتاج إلى إنشاء شركة أو اختيار نوع نشاط."}
+                    ? "Create your account using the email address that received the invitation."
+                    : "أنشئ حسابك باستخدام البريد الإلكتروني الذي تم إرسال الدعوة إليه."}
                 </p>
               </div>
             ) : !registrationMode ? (
@@ -523,47 +536,32 @@ export default function RegisterPage() {
 
                       <p className="mt-1 text-sm leading-6 text-slate-500">
                         {isEnglish
-                          ? "Join an existing company using an invitation."
-                          : "انضم إلى شركة موجودة من خلال دعوة."}
+                          ? "Create an employee account and join a company when invited."
+                          : "أنشئ حساب موظف وانضم إلى الشركة عند وصول دعوة."}
                       </p>
                     </div>
                   </div>
                 </button>
               </div>
-            ) : registrationMode === "employee" &&
-              !isInviteRegistration ? (
-              <div className="text-center">
-                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
-                  👤
-                </div>
-
-                <h2 className="text-xl font-black text-slate-950">
-                  {isEnglish
-                    ? "You need a company invitation"
-                    : "تحتاج إلى دعوة من الشركة"}
-                </h2>
-
-                <p className="mt-3 text-sm leading-7 text-slate-500">
-                  {isEnglish
-                    ? "Employees can only join a company through an invitation link sent by the company owner or manager."
-                    : "يمكن للموظفين الانضمام إلى الشركة فقط من خلال رابط دعوة يرسله مالك الشركة أو المدير."}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRegistrationMode("");
-                    setError("");
-                  }}
-                  className="mt-6 w-full rounded-xl border border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-                >
-                  {isEnglish
-                    ? "Choose another option"
-                    : "اختيار طريقة أخرى"}
-                </button>
-              </div>
             ) : (
               <>
+                {registrationMode === "employee" &&
+                  !isInviteRegistration && (
+                    <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-center">
+                      <p className="text-sm font-bold text-slate-900">
+                        {isEnglish
+                          ? "No company invitation is required to create your account."
+                          : "لا تحتاج إلى دعوة لإنشاء حساب الموظف."}
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        {isEnglish
+                          ? "After registration, your account will wait for a company invitation."
+                          : "بعد التسجيل سيبقى حسابك في انتظار دعوة من شركة."}
+                      </p>
+                    </div>
+                  )}
+
                 <form
                   onSubmit={handleRegister}
                   className="space-y-5"
@@ -730,9 +728,13 @@ export default function RegisterPage() {
                         ? isEnglish
                           ? "Create Account & Join"
                           : "إنشاء الحساب والانضمام"
-                        : isEnglish
-                          ? "Create Account"
-                          : "إنشاء الحساب"}
+                        : registrationMode === "employee"
+                          ? isEnglish
+                            ? "Create Employee Account"
+                            : "إنشاء حساب الموظف"
+                          : isEnglish
+                            ? "Create Account"
+                            : "إنشاء الحساب"}
                   </button>
                 </form>
 
@@ -783,8 +785,8 @@ export default function RegisterPage() {
 
           <p className="mt-6 text-center text-xs text-slate-400">
             {isEnglish
-              ? "BusinessOS — Manage your business from one place"
-              : "BusinessOS — إدارة أعمالك من مكان واحد"}
+              ? "BusinessOS - Manage your business from one place"
+              : "BusinessOS - إدارة أعمالك من مكان واحد"}
           </p>
         </div>
       </div>
