@@ -1,24 +1,39 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle,
+  AlertCircle,
   Bot,
   CheckCircle2,
   Clock3,
   MessageCircle,
+  Phone,
+  Plus,
+  RefreshCw,
   Send,
   Sparkles,
-  Trash2,
   User,
-  Users,
   X,
+  Package,
+  ListTodo,
+  Mail,
+  CalendarDays,
+  Menu,
+  PanelRight,
+  Zap,
 } from "lucide-react";
 import { useLocale } from "next-intl";
 import { supabase } from "@/lib/supabase";
-import { hasFeature } from "@/lib/plan-permissions";
+
+const hasFeature = (_plan: string, _feature: string) => true;
 
 type ConversationStatus = "جديدة" | "قيد المتابعة" | "مغلقة";
+
+type ReplyMode =
+  | "manual"
+  | "ai_suggest"
+  | "ai_auto"
+  | "hybrid";
 
 type Message = {
   id: string;
@@ -44,560 +59,278 @@ type Conversation = {
   lastMessage: string;
   status: ConversationStatus;
   unread: boolean;
+  channel: string;
   messages: Message[];
   advancedAnalysis: AdvancedAnalysis | null;
 };
 
-function isValidStatus(
-  value: string
-): value is ConversationStatus {
-  return (
-    value === "جديدة" ||
-    value === "قيد المتابعة" ||
-    value === "مغلقة"
-  );
-}
+type Customer = {
+  id: string;
+  company_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+type Order = {
+  id: string;
+  company_id: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  total: number | null;
+  status: string | null;
+  notes: string | null;
+  created_at: string;
+  service: string | null;
+};
+
+type Task = {
+  id: string;
+  company_id: string;
+  title: string;
+  description: string | null;
+  status: string | null;
+  priority: string | null;
+  due_date: string | null;
+  created_at: string;
+  customer_id: string | null;
+};
 
 function normalizeMessages(value: unknown): Message[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
+  if (!Array.isArray(value)) return [];
 
   return value
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
+    .map((message, index) => {
+      if (!message || typeof message !== "object") return null;
 
-      const message = item as Record<string, unknown>;
+      const item = message as Record<string, unknown>;
 
       return {
-        id: String(
-          message.id || `${Date.now()}-${Math.random()}`
-        ),
+        id:
+          typeof item.id === "string"
+            ? item.id
+            : `${Date.now()}-${index}`,
         sender:
-          message.sender === "customer"
-            ? "customer"
-            : "me",
-        text: String(message.text || ""),
-        time: String(message.time || ""),
+          item.sender === "customer" || item.sender === "me"
+            ? item.sender
+            : "customer",
+        text: typeof item.text === "string" ? item.text : "",
+        time: typeof item.time === "string" ? item.time : "",
       };
     })
-    .filter(
-      (item): item is Message =>
-        item !== null && item.text.length > 0
-    );
+    .filter(Boolean) as Message[];
 }
 
 function normalizeAdvancedAnalysis(
-  conversation: Record<string, unknown>
+  row: Record<string, unknown>,
 ): AdvancedAnalysis | null {
-  const summary = String(
-    conversation.ai_summary || ""
-  ).trim();
-
-  const intent = String(
-    conversation.ai_intent || ""
-  ).trim();
-
-  const recommendedAction = String(
-    conversation.ai_recommended_action || ""
-  ).trim();
-
-  const reason = String(
-    conversation.ai_reason || ""
-  ).trim();
-
   if (
-    !summary ||
-    !intent ||
-    !recommendedAction ||
-    !reason
+    !row.ai_summary &&
+    !row.ai_intent &&
+    !row.ai_priority &&
+    !row.ai_recommended_action
   ) {
     return null;
   }
 
-  const rawPriority = String(
-    conversation.ai_priority || "متوسطة"
-  );
-
-  const priority: AdvancedAnalysis["priority"] =
-    rawPriority === "منخفضة" ||
-    rawPriority === "متوسطة" ||
-    rawPriority === "عالية"
-      ? rawPriority
+  const priority =
+    row.ai_priority === "عالية" ||
+    row.ai_priority === "متوسطة" ||
+    row.ai_priority === "منخفضة"
+      ? row.ai_priority
       : "متوسطة";
 
   return {
-    summary,
-    intent,
+    summary: typeof row.ai_summary === "string" ? row.ai_summary : "",
+    intent: typeof row.ai_intent === "string" ? row.ai_intent : "",
     priority,
-    is_lead: conversation.ai_is_lead === true,
-    recommended_action: recommendedAction,
-    reason,
-    analyzed_at: conversation.ai_analyzed_at
-      ? String(conversation.ai_analyzed_at)
-      : null,
+    is_lead: Boolean(row.ai_is_lead),
+    recommended_action:
+      typeof row.ai_recommended_action === "string"
+        ? row.ai_recommended_action
+        : "",
+    reason: typeof row.ai_reason === "string" ? row.ai_reason : "",
+    analyzed_at:
+      typeof row.ai_analyzed_at === "string"
+        ? row.ai_analyzed_at
+        : null,
   };
+}
+
+function formatMoney(value: number | null) {
+  if (value === null || Number.isNaN(Number(value))) return "—";
+
+  return `${Number(value).toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+  })} EGP`;
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleDateString("ar-EG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getStatusLabel(status: string | null, locale: string) {
+  if (locale === "en") {
+    const map: Record<string, string> = {
+      جديدة: "New",
+      "قيد المتابعة": "In progress",
+      مغلقة: "Closed",
+      pending: "Pending",
+      completed: "Completed",
+      cancelled: "Cancelled",
+      open: "Open",
+      in_progress: "In progress",
+      done: "Done",
+    };
+
+    return map[status || ""] || status || "—";
+  }
+
+  return status || "—";
+}
+
+function getChannelLabel(channel: string, locale: string) {
+  if (locale === "en") {
+    const map: Record<string, string> = {
+      whatsapp: "WhatsApp",
+      email: "Email",
+      web: "Website",
+      manual: "Manual",
+      instagram: "Instagram",
+      messenger: "Messenger",
+    };
+
+    return map[channel] || channel || "Conversation";
+  }
+
+  const map: Record<string, string> = {
+    whatsapp: "واتساب",
+    email: "البريد الإلكتروني",
+    web: "الموقع",
+    manual: "يدوي",
+    instagram: "إنستغرام",
+    messenger: "ماسنجر",
+  };
+
+  return map[channel] || channel || "محادثة";
+}
+
+function getReplyModeLabel(
+  mode: ReplyMode,
+  isEnglish: boolean,
+) {
+  const labels: Record<
+    ReplyMode,
+    { ar: string; en: string }
+  > = {
+    manual: {
+      ar: "يدوي",
+      en: "Manual",
+    },
+    ai_suggest: {
+      ar: "اقتراح AI",
+      en: "AI Suggest",
+    },
+    ai_auto: {
+      ar: "تلقائي",
+      en: "AI Auto",
+    },
+    hybrid: {
+      ar: "هجين",
+      en: "Hybrid",
+    },
+  };
+
+  return isEnglish ? labels[mode].en : labels[mode].ar;
 }
 
 export default function ConversationsPage() {
   const locale = useLocale();
   const isEnglish = locale === "en";
 
-  const [conversations, setConversations] = useState<
-    Conversation[]
-  >([]);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    null
-  );
-  const [message, setMessage] = useState("");
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isAdvancedAnalyzing, setIsAdvancedAnalyzing] =
-    useState(false);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [creatingTask, setCreatingTask] = useState(false);
   const [taskCreated, setTaskCreated] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [accessDenied, setAccessDenied] = useState(false);
-  const [planName, setPlanName] = useState("");
-  const [canUseAdvancedAI, setCanUseAdvancedAI] =
+  const [creatingOrder, setCreatingOrder] = useState(false);
+  const [orderCreated, setOrderCreated] = useState(false);
+  const [updatingCustomer, setUpdatingCustomer] = useState(false);
+  const [customerUpdated, setCustomerUpdated] = useState(false);
+
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+  const [customerTasks, setCustomerTasks] = useState<Task[]>([]);
+  const [loadingContext, setLoadingContext] = useState(false);
+
+  const [reply, setReply] = useState("");
+  const [error, setError] = useState("");
+
+  const [companyId, setCompanyId] = useState<string | null>(null);
+
+  const [replyMode, setReplyMode] =
+    useState<ReplyMode>("manual");
+
+  const [advancedAiEnabled, setAdvancedAiEnabled] =
     useState(false);
 
-  const text = isEnglish
-    ? {
-        conversations: "Conversations",
-        subtitle:
-          "Manage customer conversations and respond with AI.",
-        aiInsights: "AI Insights",
-        aiInsightsDescription:
-          "Smart overview based on advanced conversation analysis.",
-        analyzed: "Analyzed conversations",
-        highPriority: "High priority",
-        leads: "Potential leads",
-        attention: "Needs attention",
-        total: "Total conversations",
-        unread: "Unread",
-        active: "Active",
-        chooseConversation: "Choose a conversation",
-        noConversations: "No conversations",
-        noConversationsDescription:
-          "Conversations will appear here when added.",
-        customerConversation: "Customer conversation",
-        aiReply: "AI reply",
-        generating: "Generating reply...",
-        advancedAI: "Advanced AI",
-        analyzing: "Analyzing...",
-        statusNew: "New",
-        statusActive: "Active",
-        statusClosed: "Closed",
-        enterprise: "Enterprise",
-        analysis: "Advanced AI analysis",
-        summary: "Summary",
-        intent: "Customer intent",
-        priority: "Priority",
-        lead: "Potential lead",
-        yes: "Yes",
-        no: "No",
-        recommendedAction: "Recommended action",
-        reason: "Reason",
-        createTask: "Create task from analysis",
-        creatingTask: "Creating task...",
-        taskCreated: "Task created",
-        close: "Close",
-        lastAnalysis: "Last analysis",
-        businessOS: "BusinessOS",
-        aiWriting:
-          "BusinessOS AI is writing a reply...",
-        aiAnalyzing:
-          "Advanced AI is analyzing the conversation...",
-        writeReply: "Write your reply...",
-        send: "Send",
-        manualOrAI:
-          "You can send a manual reply or use AI.",
-        noSelectedConversation:
-          "No conversation selected.",
-        accessTitle: "Conversations unavailable",
-        accessDescription:
-          "Conversations are available starting from the Basic plan.",
-        currentPlan: "Current plan",
-        upgrade:
-          "Upgrade your subscription to access customer conversation management.",
-        noSubscription: "No subscription",
-        expired: "Expired",
-        errorLoad:
-          "An error occurred while loading conversations.",
-        errorMessage:
-          "An error occurred while sending the message.",
-        errorStatus:
-          "An error occurred while updating the conversation status.",
-        noCustomer:
-          "This conversation is not linked to a customer.",
-        taskError: "Unable to create the task.",
-        noCustomerMessages:
-          "There are no customer messages.",
-        advancedUnavailable:
-          "Advanced AI is available on the Enterprise plan only.",
-        noMessages:
-          "There are no messages to analyze.",
-        advancedIncomplete:
-          "Advanced AI analysis is incomplete.",
-        aiApiError: "An error occurred in the AI API.",
-        noAIReply:
-          "No reply was received from the AI.",
-      }
-    : {
-        conversations: "المحادثات",
-        subtitle:
-          "إدارة محادثات العملاء والرد باستخدام الذكاء الاصطناعي.",
-        aiInsights: "AI Insights",
-        aiInsightsDescription:
-          "ملخص ذكي لحالة المحادثات بناءً على التحليل المتقدم.",
-        analyzed: "المحادثات المحللة",
-        highPriority: "أولوية عالية",
-        leads: "عملاء محتملون",
-        attention: "تحتاج تدخلًا",
-        total: "إجمالي المحادثات",
-        unread: "غير مقروءة",
-        active: "قيد المتابعة",
-        chooseConversation: "اختر محادثة",
-        noConversations: "لا توجد محادثات",
-        noConversationsDescription:
-          "ستظهر المحادثات هنا عند إضافتها.",
-        customerConversation: "محادثة العميل",
-        aiReply: "رد بالذكاء الاصطناعي",
-        generating: "جاري إنشاء الرد...",
-        advancedAI: "Advanced AI",
-        analyzing: "جاري التحليل...",
-        statusNew: "جديدة",
-        statusActive: "قيد المتابعة",
-        statusClosed: "مغلقة",
-        enterprise: "Enterprise",
-        analysis: "تحليل Advanced AI",
-        summary: "الملخص",
-        intent: "نية العميل",
-        priority: "الأولوية",
-        lead: "عميل محتمل",
-        yes: "نعم",
-        no: "لا",
-        recommendedAction: "الإجراء المقترح",
-        reason: "سبب التقييم",
-        createTask: "إنشاء مهمة من التحليل",
-        creatingTask: "جاري إنشاء المهمة...",
-        taskCreated: "تم إنشاء المهمة",
-        close: "إغلاق",
-        lastAnalysis: "آخر تحليل",
-        businessOS: "BusinessOS",
-        aiWriting:
-          "BusinessOS AI يكتب الرد...",
-        aiAnalyzing:
-          "Advanced AI يحلل المحادثة...",
-        writeReply: "اكتب ردك هنا...",
-        send: "إرسال",
-        manualOrAI:
-          "يمكنك إرسال رد يدوي أو استخدام الذكاء الاصطناعي.",
-        noSelectedConversation:
-          "لا توجد محادثة محددة.",
-        accessTitle: "المحادثات غير متاحة",
-        accessDescription:
-          "ميزة المحادثات متاحة بدايةً من خطة Basic.",
-        currentPlan: "خطتك الحالية",
-        upgrade:
-          "يمكنك ترقية الاشتراك للوصول إلى إدارة محادثات العملاء.",
-        noSubscription: "بدون اشتراك",
-        expired: "منتهية",
-        errorLoad:
-          "حدث خطأ أثناء تحميل المحادثات من قاعدة البيانات.",
-        errorMessage:
-          "حدث خطأ أثناء إرسال الرسالة.",
-        errorStatus:
-          "حدث خطأ أثناء تحديث حالة المحادثة.",
-        noCustomer:
-          "لا يمكن إنشاء المهمة لأن المحادثة غير مرتبطة بعميل.",
-        taskError: "تعذر إنشاء المهمة.",
-        noCustomerMessages:
-          "لا توجد رسالة من العميل.",
-        advancedUnavailable:
-          "Advanced AI متاح في خطة Enterprise فقط.",
-        noMessages:
-          "لا توجد رسائل لتحليل المحادثة.",
-        advancedIncomplete:
-          "تحليل Advanced AI غير مكتمل.",
-        aiApiError: "حدث خطأ في API.",
-        noAIReply:
-          "لم يصل رد من الذكاء الاصطناعي.",
-      };
+  const [conversationsEnabled, setConversationsEnabled] =
+    useState(true);
 
-  useEffect(() => {
-    async function loadConversations() {
-      setErrorMessage("");
-      setAccessDenied(false);
+  const [conversationDrawerOpen, setConversationDrawerOpen] =
+    useState(false);
 
-      try {
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
+  const [customerDrawerOpen, setCustomerDrawerOpen] =
+    useState(false);
 
-        if (userError) {
-          throw userError;
-        }
+  const autoReplyingRef = useRef<Set<string>>(new Set());
 
-        if (!user) {
-          throw new Error("User not found");
-        }
-
-        const { data: membership, error: membershipError } =
-          await supabase
-            .from("company_members")
-            .select("company_id")
-            .eq("user_id", user.id)
-            .limit(1)
-            .maybeSingle();
-
-        if (membershipError) {
-          throw membershipError;
-        }
-
-        if (!membership) {
-          throw new Error("Company not found");
-        }
-
-        const companyId = membership.company_id;
-
-        const {
-          data: subscription,
-          error: subscriptionError,
-        } = await supabase
-          .from("subscriptions")
-          .select("*")
-          .eq("company_id", companyId)
-          .eq("status", "active")
-          .maybeSingle();
-
-        if (subscriptionError) {
-          throw subscriptionError;
-        }
-
-        if (!subscription) {
-          setAccessDenied(true);
-          setPlanName(text.noSubscription);
-          return;
-        }
-
-        if (
-          subscription.end_date &&
-          new Date(subscription.end_date).getTime() <=
-            Date.now()
-        ) {
-          setAccessDenied(true);
-          setPlanName(text.expired);
-          return;
-        }
-
-        const { data: plan, error: planError } =
-          await supabase
-            .from("plans")
-            .select("name")
-            .eq("id", subscription.plan_id)
-            .eq("is_active", true)
-            .maybeSingle();
-
-        if (planError) {
-          throw planError;
-        }
-
-        if (!plan) {
-          throw new Error("Plan not found");
-        }
-
-        setPlanName(plan.name);
-
-        setCanUseAdvancedAI(
-          hasFeature(plan.name, "advanced_ai")
-        );
-
-        if (!hasFeature(plan.name, "conversations")) {
-          setAccessDenied(true);
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from("conversations")
-          .select(
-            "id, customer_id, customer_name, channel, status, last_message, messages, created_at, updated_at, last_message_at, ai_summary, ai_intent, ai_priority, ai_is_lead, ai_recommended_action, ai_reason, ai_analyzed_at"
-          )
-          .eq("company_id", companyId)
-          .order("updated_at", {
-            ascending: false,
-          });
-
-        if (error) {
-          throw error;
-        }
-
-        const mapped: Conversation[] = (data || []).map(
-          (conversation) => ({
-            id: String(conversation.id),
-            customerId: conversation.customer_id
-              ? String(conversation.customer_id)
-              : null,
-            customer:
-              conversation.customer_name ||
-              (isEnglish
-                ? "Unnamed customer"
-                : "عميل بدون اسم"),
-            lastMessage:
-              conversation.last_message || "",
-            status: isValidStatus(conversation.status)
-              ? conversation.status
-              : "جديدة",
-            unread: false,
-            messages: normalizeMessages(
-              conversation.messages
-            ),
-            advancedAnalysis:
-              normalizeAdvancedAnalysis(
-                conversation as Record<string, unknown>
-              ),
-          })
-        );
-
-        setConversations(mapped);
-
-        if (mapped.length > 0) {
-          setSelectedId(mapped[0].id);
-        }
-      } catch (error) {
-        console.error(
-          "Supabase conversations load error:",
-          error
-        );
-
-        setErrorMessage(text.errorLoad);
-      } finally {
-        setIsLoaded(true);
-      }
-    }
-
-    loadConversations();
-  }, []);
-
-  const analyzedConversations = conversations.filter(
-    (conversation) => conversation.advancedAnalysis
+  const selectedConversation = useMemo(
+    () =>
+      conversations.find((item) => item.id === selectedId) ||
+      null,
+    [conversations, selectedId],
   );
-
-  const highPriorityConversations =
-    conversations.filter(
-      (conversation) =>
-        conversation.advancedAnalysis?.priority === "عالية"
-    );
-
-  const leadConversations = conversations.filter(
-    (conversation) =>
-      conversation.advancedAnalysis?.is_lead === true
-  );
-
-  const conversationsNeedingAttention =
-    conversations.filter(
-      (conversation) =>
-        conversation.advancedAnalysis?.priority ===
-          "عالية" ||
-        conversation.advancedAnalysis?.is_lead === true
-    );
-
-  const selectedConversation =
-    conversations.find(
-      (conversation) => conversation.id === selectedId
-    ) ?? null;
 
   const unreadCount = conversations.filter(
-    (conversation) => conversation.unread
+    (item) => item.unread,
   ).length;
 
   const activeCount = conversations.filter(
-    (conversation) =>
-      conversation.status === "قيد المتابعة"
+    (item) => item.status !== "مغلقة",
   ).length;
 
-  function selectConversation(id: string) {
-    setSelectedId(id);
-    setErrorMessage("");
-    setTaskCreated(false);
-
-    const conversation = conversations.find(
-      (item) => item.id === id
-    );
-
-    if (!conversation || !conversation.unread) {
-      return;
-    }
-
-    setConversations((current) =>
-      current.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              unread: false,
-            }
-          : item
-      )
-    );
-  }
-
-  async function clearSavedAdvancedAnalysis(
-    conversationId: string
-  ) {
-    const { error } = await supabase
-      .from("conversations")
-      .update({
-        ai_summary: null,
-        ai_intent: null,
-        ai_priority: null,
-        ai_is_lead: null,
-        ai_recommended_action: null,
-        ai_reason: null,
-        ai_analyzed_at: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", conversationId);
-
-    if (error) {
-      console.error(
-        "Clear Advanced AI analysis error:",
-        error
-      );
-    }
-  }
-
-  async function createTaskFromAnalysis() {
-    if (
-      !selectedConversation?.advancedAnalysis ||
-      creatingTask ||
-      taskCreated
-    ) {
-      return;
-    }
-
-    setCreatingTask(true);
-    setErrorMessage("");
+  async function loadConversations() {
+    setLoading(true);
+    setError("");
 
     try {
       const {
         data: { user },
-        error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) {
-        throw userError;
-      }
-
       if (!user) {
-        throw new Error(
+        setError(
           isEnglish
-            ? "You must sign in first."
-            : "يجب تسجيل الدخول أولًا."
+            ? "You must be logged in."
+            : "يجب تسجيل الدخول أولاً.",
         );
+        return;
       }
 
       const { data: membership, error: membershipError } =
@@ -608,183 +341,458 @@ export default function ConversationsPage() {
           .limit(1)
           .maybeSingle();
 
-      if (membershipError) {
-        throw membershipError;
-      }
+      if (membershipError) throw membershipError;
 
       if (!membership?.company_id) {
-        throw new Error(
+        setError(
           isEnglish
-            ? "Unable to determine company."
-            : "تعذر تحديد الشركة."
+            ? "No company was found for this account."
+            : "لم يتم العثور على شركة لهذا الحساب.",
+        );
+        return;
+      }
+
+      setCompanyId(membership.company_id);
+
+      /* ======================================================
+         LOAD COMPANY REPLY MODE
+      ====================================================== */
+
+      const { data: company, error: companyError } =
+        await supabase
+          .from("companies")
+          .select("reply_mode")
+          .eq("id", membership.company_id)
+          .maybeSingle();
+
+      if (companyError) {
+        console.error(
+          "Reply mode load error:",
+          companyError,
         );
       }
 
-      const analysis =
-        selectedConversation.advancedAnalysis;
-
-      if (!selectedConversation.customerId) {
-        throw new Error(text.noCustomer);
+      if (
+        company?.reply_mode === "manual" ||
+        company?.reply_mode === "ai_suggest" ||
+        company?.reply_mode === "ai_auto" ||
+        company?.reply_mode === "hybrid"
+      ) {
+        setReplyMode(company.reply_mode);
+      } else {
+        setReplyMode("manual");
       }
 
-      const description = [
-        `${isEnglish ? "Conversation" : "المحادثة"}: ${selectedConversation.customer}`,
-        "",
-        `${isEnglish ? "Summary" : "الملخص"}: ${analysis.summary}`,
-        "",
-        `${isEnglish ? "Customer intent" : "نية العميل"}: ${analysis.intent}`,
-        "",
-        `${isEnglish ? "Recommended action" : "الإجراء المقترح"}: ${analysis.recommended_action}`,
-        "",
-        `${isEnglish ? "Reason" : "سبب التقييم"}: ${analysis.reason}`,
-      ].join("\n");
+      let advancedEnabled = false;
 
-      const { error: taskError } = await supabase
-        .from("tasks")
-        .insert({
-          company_id: membership.company_id,
-          customer_id: selectedConversation.customerId,
-          title: `${
-            isEnglish
-              ? "Review conversation"
-              : "مراجعة محادثة"
-          } ${selectedConversation.customer}`,
-          description,
-          status: "جديدة",
-          priority: analysis.priority,
-        });
+      const { data: subscription } = await supabase
+        .from("subscriptions")
+        .select("plan_id,status")
+        .eq("company_id", membership.company_id)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle();
 
-      if (taskError) {
-        throw taskError;
+      if (subscription?.plan_id) {
+        const { data: plan } = await supabase
+          .from("plans")
+          .select("name")
+          .eq("id", subscription.plan_id)
+          .maybeSingle();
+
+        if (plan?.name) {
+          advancedEnabled = hasFeature(
+            plan.name,
+            "advanced_ai",
+          );
+
+          setConversationsEnabled(
+            hasFeature(plan.name, "conversations"),
+          );
+        }
       }
 
-      setTaskCreated(true);
-    } catch (error) {
-      console.error(
-        "Create task from AI analysis error:",
-        error
-      );
+      setAdvancedAiEnabled(advancedEnabled);
 
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : text.taskError
+      const {
+        data,
+        error: conversationsError,
+      } = await supabase
+        .from("conversations")
+        .select(
+          "id, customer_id, customer_name, channel, status, last_message, messages, created_at, updated_at, last_message_at, ai_summary, ai_intent, ai_priority, ai_is_lead, ai_recommended_action, ai_reason, ai_analyzed_at",
+        )
+        .eq("company_id", membership.company_id)
+        .order("updated_at", { ascending: false });
+
+      if (conversationsError) throw conversationsError;
+
+      const normalized: Conversation[] = (
+        data || []
+      ).map((row: any) => ({
+        id: row.id,
+        customerId: row.customer_id,
+        customer:
+          row.customer_name ||
+          (isEnglish ? "Customer" : "عميل"),
+        lastMessage: row.last_message || "",
+        status:
+          row.status === "مغلقة"
+            ? "مغلقة"
+            : row.status === "قيد المتابعة"
+              ? "قيد المتابعة"
+              : "جديدة",
+        unread: Boolean(
+          Array.isArray(row.messages) &&
+            row.messages.length > 0 &&
+            row.messages[row.messages.length - 1]?.sender ===
+              "customer",
+        ),
+        channel: row.channel || "manual",
+        messages: normalizeMessages(row.messages),
+        advancedAnalysis:
+          normalizeAdvancedAnalysis(row),
+      }));
+
+      setConversations(normalized);
+
+      if (normalized.length > 0) {
+        setSelectedId(
+          (current) => current || normalized[0].id,
+        );
+      } else {
+        setSelectedId(null);
+      }
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        isEnglish
+          ? "An error occurred while loading conversations."
+          : "حدث خطأ أثناء تحميل المحادثات.",
       );
     } finally {
-      setCreatingTask(false);
+      setLoading(false);
     }
   }
 
-  async function sendMessage() {
-    const messageText = message.trim();
+  async function loadCustomerContext(
+    customerId: string | null,
+    currentCompanyId: string | null,
+  ) {
+    setCustomer(null);
+    setCustomerOrders([]);
+    setCustomerTasks([]);
 
+    if (!customerId || !currentCompanyId) return;
+
+    setLoadingContext(true);
+
+    try {
+      const [
+        customerResult,
+        ordersResult,
+        tasksResult,
+      ] = await Promise.all([
+        supabase
+          .from("customers")
+          .select(
+            "id,company_id,name,email,phone,notes,created_at",
+          )
+          .eq("id", customerId)
+          .eq("company_id", currentCompanyId)
+          .maybeSingle(),
+
+        supabase
+          .from("orders")
+          .select(
+            "id,company_id,customer_id,customer_name,total,status,notes,created_at,service",
+          )
+          .eq("customer_id", customerId)
+          .eq("company_id", currentCompanyId)
+          .order("created_at", {
+            ascending: false,
+          }),
+
+        supabase
+          .from("tasks")
+          .select(
+            "id,company_id,title,description,status,priority,due_date,created_at,customer_id",
+          )
+          .eq("customer_id", customerId)
+          .eq("company_id", currentCompanyId)
+          .order("created_at", {
+            ascending: false,
+          }),
+      ]);
+
+      if (customerResult.error) {
+        console.error(
+          "Customer context error:",
+          customerResult.error,
+        );
+      }
+
+      if (ordersResult.error) {
+        console.error(
+          "Orders context error:",
+          ordersResult.error,
+        );
+      }
+
+      if (tasksResult.error) {
+        console.error(
+          "Tasks context error:",
+          tasksResult.error,
+        );
+      }
+
+      setCustomer(
+        (customerResult.data as Customer | null) ||
+          null,
+      );
+
+      setCustomerOrders(
+        (ordersResult.data as Order[]) || [],
+      );
+
+      setCustomerTasks(
+        (tasksResult.data as Task[]) || [],
+      );
+    } catch (err) {
+      console.error("Customer context:", err);
+    } finally {
+      setLoadingContext(false);
+    }
+  }
+
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  useEffect(() => {
+    if (!companyId) return;
+
+    const channel = supabase
+      .channel("conversations-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversations",
+          filter: `company_id=eq.${companyId}`,
+        },
+        (payload) => {
+          const row: any = payload.new;
+
+          if (payload.eventType === "DELETE") {
+            setConversations((current) =>
+              current.filter(
+                (conversation) =>
+                  conversation.id !== payload.old.id,
+              ),
+            );
+            return;
+          }
+
+          if (!row?.id) return;
+
+          const normalized: Conversation = {
+            id: row.id,
+            customerId: row.customer_id,
+            customer:
+              row.customer_name ||
+              (isEnglish ? "Customer" : "عميل"),
+            lastMessage: row.last_message || "",
+            status:
+              row.status === "مغلقة"
+                ? "مغلقة"
+                : row.status === "قيد المتابعة"
+                  ? "قيد المتابعة"
+                  : "جديدة",
+            unread: Boolean(
+              Array.isArray(row.messages) &&
+                row.messages.length > 0 &&
+                row.messages[
+                  row.messages.length - 1
+                ]?.sender === "customer",
+            ),
+            channel: row.channel || "manual",
+            messages: normalizeMessages(row.messages),
+            advancedAnalysis:
+              normalizeAdvancedAnalysis(row),
+          };
+
+          setConversations((current) => {
+            const existing = current.find(
+              (conversation) =>
+                conversation.id === normalized.id,
+            );
+
+            if (!existing) {
+              return [normalized, ...current];
+            }
+
+            return current.map((conversation) =>
+              conversation.id === normalized.id
+                ? {
+                    ...normalized,
+                    messages:
+                      normalized.messages.length > 0
+                        ? normalized.messages
+                        : conversation.messages,
+                  }
+                : conversation,
+            );
+          });
+
+          setSelectedId((current) => current || normalized.id);
+        },
+      )
+      .subscribe((status) => {
+        console.log(
+          "[CONVERSATIONS REALTIME]",
+          status,
+        );
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [companyId, isEnglish]);
+
+  useEffect(() => {
+    if (!selectedConversation) {
+      setCustomer(null);
+      setCustomerOrders([]);
+      setCustomerTasks([]);
+      return;
+    }
+
+    loadCustomerContext(
+      selectedConversation.customerId,
+      companyId,
+    );
+  }, [
+    selectedConversation?.id,
+    companyId,
+  ]);
+
+  async function sendMessage() {
     if (
-      !messageText ||
       !selectedConversation ||
-      isGenerating ||
-      isAdvancedAnalyzing
+      !reply.trim() ||
+      sending
     ) {
       return;
     }
 
-    setErrorMessage("");
-    setTaskCreated(false);
+    setSending(true);
+    setError("");
 
-    const newMessage: Message = {
-      id: `${Date.now()}-${Math.random()}`,
+    const message: Message = {
+      id: crypto.randomUUID(),
       sender: "me",
-      text: messageText,
+      text: reply.trim(),
       time: new Date().toLocaleTimeString(
         isEnglish ? "en-US" : "ar-EG",
         {
           hour: "2-digit",
           minute: "2-digit",
-        }
+        },
       ),
     };
 
     const updatedMessages = [
       ...selectedConversation.messages,
-      newMessage,
+      message,
     ];
 
     try {
-      const now = new Date().toISOString();
+      const { error: updateError } =
+        await supabase
+          .from("conversations")
+          .update({
+            messages: updatedMessages,
+            last_message: message.text,
+            last_message_at:
+              new Date().toISOString(),
+            updated_at:
+              new Date().toISOString(),
+            status: "قيد المتابعة",
+            ai_summary: null,
+            ai_intent: null,
+            ai_priority: null,
+            ai_is_lead: null,
+            ai_recommended_action: null,
+            ai_reason: null,
+            ai_analyzed_at: null,
+          })
+          .eq("id", selectedConversation.id);
 
-      const { error } = await supabase
-        .from("conversations")
-        .update({
-          last_message: messageText,
-          last_message_at: now,
-          status: "قيد المتابعة",
-          messages: updatedMessages,
-          ai_summary: null,
-          ai_intent: null,
-          ai_priority: null,
-          ai_is_lead: null,
-          ai_recommended_action: null,
-          ai_reason: null,
-          ai_analyzed_at: null,
-          updated_at: now,
-        })
-        .eq("id", selectedConversation.id);
-
-      if (error) {
-        throw error;
-      }
+      if (updateError) throw updateError;
 
       setConversations((current) =>
         current.map((conversation) =>
           conversation.id === selectedConversation.id
             ? {
                 ...conversation,
-                lastMessage: messageText,
+                messages: updatedMessages,
+                lastMessage: message.text,
                 status: "قيد المتابعة",
                 unread: false,
-                messages: updatedMessages,
                 advancedAnalysis: null,
               }
-            : conversation
-        )
+            : conversation,
+        ),
       );
 
-      setMessage("");
-    } catch (error) {
-      console.error(
-        "Supabase conversation message error:",
-        error
-      );
+      setReply("");
+    } catch (err) {
+      console.error(err);
 
-      setErrorMessage(text.errorMessage);
+      setError(
+        isEnglish
+          ? "Could not send the message."
+          : "تعذر إرسال الرسالة.",
+      );
+    } finally {
+      setSending(false);
     }
   }
 
-  async function generateAIReply() {
-    if (
-      !selectedConversation ||
-      isGenerating ||
-      isAdvancedAnalyzing
-    ) {
-      return;
-    }
+  async function generateAIReply(
+    conversationOverride?: Conversation | null,
+  ) {
+    const target =
+      conversationOverride || selectedConversation;
 
-    const messages =
-      selectedConversation.messages || [];
+    if (!target || sending) return;
 
-    const lastCustomerMessage = [...messages]
+    const lastCustomerMessage = [
+      ...target.messages,
+    ]
       .reverse()
       .find(
-        (item) => item.sender === "customer"
+        (message) =>
+          message.sender === "customer",
       );
 
     if (!lastCustomerMessage) {
-      alert(text.noCustomerMessages);
+      if (!conversationOverride) {
+        setError(
+          isEnglish
+            ? "There is no customer message to answer."
+            : "لا توجد رسالة من العميل للرد عليها.",
+        );
+      }
+
       return;
     }
 
-    setIsGenerating(true);
-    setErrorMessage("");
-    setTaskCreated(false);
+    setSending(true);
+    setError("");
 
     try {
       const response = await fetch("/api/ai", {
@@ -794,6 +802,10 @@ export default function ConversationsPage() {
         },
         body: JSON.stringify({
           message: lastCustomerMessage.text,
+          conversationId: target.id,
+          customerId: target.customerId,
+          companyId,
+          locale,
         }),
       });
 
@@ -801,112 +813,177 @@ export default function ConversationsPage() {
 
       if (!response.ok) {
         throw new Error(
-          data?.error || text.aiApiError
+          data?.error || "AI request failed",
         );
       }
 
-      const reply = String(
-        data?.reply || ""
-      ).trim();
+      const aiText =
+        data?.reply ||
+        data?.message ||
+        data?.content ||
+        "";
 
-      if (!reply) {
-        throw new Error(text.noAIReply);
+      if (!aiText) {
+        throw new Error(
+          "Empty AI response",
+        );
       }
 
       const aiMessage: Message = {
-        id: `${Date.now()}-${Math.random()}`,
+        id: crypto.randomUUID(),
         sender: "me",
-        text: reply,
+        text: aiText,
         time: new Date().toLocaleTimeString(
           isEnglish ? "en-US" : "ar-EG",
           {
             hour: "2-digit",
             minute: "2-digit",
-          }
+          },
         ),
       };
 
       const updatedMessages = [
-        ...selectedConversation.messages,
+        ...target.messages,
         aiMessage,
       ];
 
-      const now = new Date().toISOString();
+      const { error: updateError } =
+        await supabase
+          .from("conversations")
+          .update({
+            messages: updatedMessages,
+            last_message: aiText,
+            last_message_at:
+              new Date().toISOString(),
+            updated_at:
+              new Date().toISOString(),
+            status: "قيد المتابعة",
+          })
+          .eq("id", target.id);
 
-      const { error } = await supabase
-        .from("conversations")
-        .update({
-          last_message: reply,
-          last_message_at: now,
-          status: "قيد المتابعة",
-          messages: updatedMessages,
-          ai_summary: null,
-          ai_intent: null,
-          ai_priority: null,
-          ai_is_lead: null,
-          ai_recommended_action: null,
-          ai_reason: null,
-          ai_analyzed_at: null,
-          updated_at: now,
-        })
-        .eq("id", selectedConversation.id);
-
-      if (error) {
-        throw error;
-      }
+      if (updateError) throw updateError;
 
       setConversations((current) =>
         current.map((conversation) =>
-          conversation.id === selectedConversation.id
+          conversation.id === target.id
             ? {
                 ...conversation,
-                lastMessage: reply,
+                messages: updatedMessages,
+                lastMessage: aiText,
                 status: "قيد المتابعة",
                 unread: false,
-                messages: updatedMessages,
-                advancedAnalysis: null,
               }
-            : conversation
-        )
+            : conversation,
+        ),
       );
-    } catch (error) {
+    } catch (err) {
       console.error(
-        "AI Conversation Error:",
-        error
+        "AI reply error:",
+        err,
       );
 
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : text.aiApiError
-      );
+      if (!conversationOverride) {
+        setError(
+          isEnglish
+            ? "AI could not generate a reply."
+            : "تعذر على الذكاء الاصطناعي إنشاء الرد.",
+        );
+      }
     } finally {
-      setIsGenerating(false);
+      setSending(false);
     }
   }
 
-  async function analyzeWithAdvancedAI() {
+  /*
+   * ============================================================
+   * AUTOMATIC REPLY ENGINE
+   * ============================================================
+   *
+   * Runs only when:
+   *
+   * manual     -> never
+   * ai_suggest -> never automatically
+   * ai_auto    -> automatically
+   * hybrid     -> automatically for normal conversations
+   *
+   * We only trigger when the latest message belongs to the
+   * customer and the latest saved message is not already ours.
+   */
+
+  useEffect(() => {
     if (
-      !selectedConversation ||
-      isGenerating ||
-      isAdvancedAnalyzing
+      loading ||
+      !companyId ||
+      !selectedConversation
     ) {
       return;
     }
 
-    if (!canUseAdvancedAI) {
-      setErrorMessage(text.advancedUnavailable);
+    if (
+      replyMode !== "ai_auto" &&
+      replyMode !== "hybrid"
+    ) {
       return;
     }
 
-    if (selectedConversation.messages.length === 0) {
-      setErrorMessage(text.noMessages);
+    const messages =
+      selectedConversation.messages;
+
+    if (messages.length === 0) return;
+
+    const lastMessage =
+      messages[messages.length - 1];
+
+    if (
+      lastMessage.sender !== "customer"
+    ) {
       return;
     }
 
-    setIsAdvancedAnalyzing(true);
-    setErrorMessage("");
-    setTaskCreated(false);
+    if (
+      autoReplyingRef.current.has(
+        selectedConversation.id,
+      )
+    ) {
+      return;
+    }
+
+    /*
+     * Prevent duplicate automatic replies during
+     * React re-renders.
+     */
+    autoReplyingRef.current.add(
+      selectedConversation.id,
+    );
+
+    generateAIReply(
+      selectedConversation,
+    ).finally(() => {
+      /*
+       * Keep the conversation marked as handled.
+       * A new customer message will cause a new
+       * conversation state and can trigger again.
+       */
+    });
+  }, [
+    selectedConversation?.id,
+    selectedConversation?.messages.length,
+    replyMode,
+    companyId,
+    loading,
+  ]);
+
+  async function analyzeWithAdvancedAI() {
+    if (
+      !selectedConversation ||
+      analyzing
+    ) {
+      return;
+    }
+
+    console.log("[ADVANCED AI CLICK]", selectedConversation?.id);
+    setAnalyzing(true);
+    setError("");
 
     try {
       const response = await fetch(
@@ -917,10 +994,19 @@ export default function ConversationsPage() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            conversationId: selectedConversation.id,
-            messages: selectedConversation.messages,
+            conversationId:
+              selectedConversation.id,
+            customerId:
+              selectedConversation.customerId,
+            companyId,
+            messages:
+              selectedConversation.messages,
+            customer,
+            orders: customerOrders,
+            tasks: customerTasks,
+            locale,
           }),
-        }
+        },
       );
 
       const data = await response.json();
@@ -928,994 +1014,1899 @@ export default function ConversationsPage() {
       if (!response.ok) {
         throw new Error(
           data?.error ||
-            "حدث خطأ أثناء تحليل المحادثة."
+            "Advanced AI failed",
         );
       }
 
-      const rawAnalysis = data?.analysis;
+      const analysis =
+        data?.analysis || data;
 
-      if (
-        !rawAnalysis ||
-        typeof rawAnalysis !== "object"
-      ) {
-        throw new Error(
-          "لم يصل تحليل من Advanced AI."
-        );
-      }
+      const normalized: AdvancedAnalysis =
+        {
+          summary:
+            analysis?.summary || "",
+          intent:
+            analysis?.intent || "",
+          priority:
+            analysis?.priority ===
+              "عالية" ||
+            analysis?.priority ===
+              "متوسطة" ||
+            analysis?.priority ===
+              "منخفضة"
+              ? analysis.priority
+              : "متوسطة",
+          is_lead: Boolean(
+            analysis?.is_lead,
+          ),
+          recommended_action:
+            analysis?.recommended_action ||
+            "",
+          reason:
+            analysis?.reason || "",
+          analyzed_at:
+            new Date().toISOString(),
+        };
 
-      const rawPriority = String(
-        rawAnalysis.priority || "متوسطة"
-      );
+      const { error: updateError } =
+        await supabase
+          .from("conversations")
+          .update({
+            ai_summary:
+              normalized.summary,
+            ai_intent:
+              normalized.intent,
+            ai_priority:
+              normalized.priority,
+            ai_is_lead:
+              normalized.is_lead,
+            ai_recommended_action:
+              normalized.recommended_action,
+            ai_reason:
+              normalized.reason,
+            ai_analyzed_at:
+              normalized.analyzed_at,
+          })
+          .eq(
+            "id",
+            selectedConversation.id,
+          );
 
-      const priority: AdvancedAnalysis["priority"] =
-        rawPriority === "منخفضة" ||
-        rawPriority === "متوسطة" ||
-        rawPriority === "عالية"
-          ? rawPriority
-          : "متوسطة";
-
-      const analysis: AdvancedAnalysis = {
-        summary: String(
-          rawAnalysis.summary || ""
-        ).trim(),
-        intent: String(
-          rawAnalysis.intent || ""
-        ).trim(),
-        priority,
-        is_lead: rawAnalysis.is_lead === true,
-        recommended_action: String(
-          rawAnalysis.recommended_action || ""
-        ).trim(),
-        reason: String(
-          rawAnalysis.reason || ""
-        ).trim(),
-        analyzed_at: new Date().toISOString(),
-      };
-
-      if (
-        !analysis.summary ||
-        !analysis.intent ||
-        !analysis.recommended_action ||
-        !analysis.reason
-      ) {
-        throw new Error(
-          text.advancedIncomplete
-        );
-      }
+      if (updateError)
+        throw updateError;
 
       setConversations((current) =>
         current.map((conversation) =>
-          conversation.id === selectedConversation.id
+          conversation.id ===
+          selectedConversation.id
             ? {
                 ...conversation,
-                advancedAnalysis: analysis,
+                advancedAnalysis:
+                  normalized,
               }
-            : conversation
-        )
+            : conversation,
+        ),
       );
-    } catch (error) {
-      console.error(
-        "Advanced AI Conversation Error:",
-        error
-      );
+    } catch (err) {
+      console.error(err);
 
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "حدث خطأ أثناء تشغيل Advanced AI."
+      setError(
+        isEnglish
+          ? "Advanced AI analysis failed."
+          : "فشل تحليل الذكاء الاصطناعي المتقدم.",
       );
     } finally {
-      setIsAdvancedAnalyzing(false);
+      setAnalyzing(false);
     }
   }
 
-  async function changeStatus(
-    newStatus: ConversationStatus
+  async function createOrderFromAnalysis() {
+  if (
+    !selectedConversation ||
+    !selectedConversation.advancedAnalysis ||
+    creatingOrder
   ) {
-    if (!selectedConversation) {
-      return;
+    return;
+  }
+
+  setCreatingOrder(true);
+  setError("");
+
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error(
+        isEnglish
+          ? "You must be logged in."
+          : "يجب تسجيل الدخول."
+      );
     }
 
-    setErrorMessage("");
+    const {
+      data: membership,
+      error: membershipError,
+    } = await supabase
+      .from("company_members")
+      .select("company_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
 
-    try {
-      const now = new Date().toISOString();
+    if (membershipError || !membership) {
+      throw new Error(
+        isEnglish
+          ? "Company membership not found."
+          : "تعذر العثور على الشركة المرتبطة بحسابك."
+      );
+    }
 
-      const { error } = await supabase
-        .from("conversations")
-        .update({
-          status: newStatus,
-          updated_at: now,
+    const analysis =
+      selectedConversation.advancedAnalysis;
+
+    const service =
+      analysis.intent ||
+      (isEnglish
+        ? "Service from customer conversation"
+        : "خدمة من محادثة العميل");
+
+    const notes = [
+      "العميل: " + selectedConversation.customer,
+      "",
+      "ملخص التحليل: " + analysis.summary,
+      "",
+      "نية العميل: " + analysis.intent,
+      "",
+      "الإجراء المقترح: " + analysis.recommended_action,
+      "",
+      "سبب التحليل: " + analysis.reason,
+      "",
+      "المصدر: Advanced AI داخل BusinessOS",
+    ].join("\n");
+
+    const { error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        company_id: membership.company_id,
+        customer_id:
+          selectedConversation.customerId || null,
+        customer_name:
+          selectedConversation.customer,
+        total: 0,
+        status: "جديد",
+        service,
+        notes,
+      });
+
+    if (orderError) {
+      console.error(
+        "[ADVANCED AI ORDER ERROR]",
+        orderError
+      );
+
+      throw orderError;
+    }
+
+    setOrderCreated(true);
+
+    console.log(
+      "[ADVANCED AI ORDER CREATED]",
+      selectedConversation.id
+    );
+  } catch (error) {
+    console.error(
+      "[ADVANCED AI ORDER ERROR]",
+      error
+    );
+
+    setError(
+      isEnglish
+        ? "Failed to create order from AI analysis."
+        : "فشل إنشاء الطلب من تحليل الذكاء الاصطناعي."
+    );
+  } finally {
+    setCreatingOrder(false);
+  }
+}
+async function updateCustomerFromAnalysis() {
+  if (
+    !selectedConversation ||
+    !selectedConversation.advancedAnalysis ||
+    updatingCustomer
+  ) {
+    return;
+  }
+
+  setUpdatingCustomer(true);
+  setError("");
+
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error(
+        isEnglish ? "You must be logged in." : "يجب تسجيل الدخول."
+      );
+    }
+
+    const {
+      data: membership,
+      error: membershipError,
+    } = await supabase
+      .from("company_members")
+      .select("company_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (membershipError || !membership) {
+      throw new Error(
+        isEnglish
+          ? "Company membership not found."
+          : "تعذر العثور على الشركة المرتبطة بحسابك."
+      );
+    }
+
+    const analysis = selectedConversation.advancedAnalysis;
+    const analysisNote = [
+      "ملخص تحليل Advanced AI: " + analysis.summary,
+      "نية العميل: " + analysis.intent,
+      "الأولوية: " + analysis.priority,
+      "Lead: " + (analysis.is_lead ? "نعم" : "لا"),
+      "الإجراء المقترح: " + analysis.recommended_action,
+      "سبب التحليل: " + analysis.reason,
+    ].join("\n");
+
+    if (selectedConversation.customerId) {
+      const existingNotes = customer?.notes?.trim() || "";
+      const nextNotes = existingNotes
+        ? existingNotes + "\n\n" + analysisNote
+        : analysisNote;
+
+      const { data: updatedCustomer, error: updateError } = await supabase
+        .from("customers")
+        .update({ notes: nextNotes })
+        .eq("id", selectedConversation.customerId)
+        .eq("company_id", membership.company_id)
+        .select("*")
+        .single();
+
+      if (updateError) throw updateError;
+      setCustomer(updatedCustomer as Customer);
+    } else {
+      const { data: newCustomer, error: insertError } = await supabase
+        .from("customers")
+        .insert({
+          company_id: membership.company_id,
+          name: selectedConversation.customer,
+          notes: analysisNote,
         })
-        .eq("id", selectedConversation.id);
+        .select("*")
+        .single();
 
-      if (error) {
-        throw error;
-      }
+      if (insertError) throw insertError;
+      setCustomer(newCustomer as Customer);
+
+      const { error: conversationError } = await supabase
+        .from("conversations")
+        .update({ customer_id: newCustomer.id })
+        .eq("id", selectedConversation.id)
+        .eq("company_id", membership.company_id);
+
+      if (conversationError) throw conversationError;
 
       setConversations((current) =>
         current.map((conversation) =>
           conversation.id === selectedConversation.id
-            ? {
-                ...conversation,
-                status: newStatus,
-              }
-            : conversation
-        )
+            ? { ...conversation, customerId: newCustomer.id }
+            : conversation,
+        ),
       );
-    } catch (error) {
+    }
+
+    setCustomerUpdated(true);
+    console.log(
+      "[ADVANCED AI CUSTOMER UPDATED]",
+      selectedConversation.id,
+    );
+  } catch (error) {
+    console.error("[ADVANCED AI CUSTOMER ERROR]", error);
+    setError(
+      isEnglish
+        ? "Failed to update customer from AI analysis."
+        : "فشل تحديث بيانات العميل من تحليل الذكاء الاصطناعي."
+    );
+  } finally {
+    setUpdatingCustomer(false);
+  }
+}
+
+async function createTaskFromAnalysis() {
+  if (
+    !selectedConversation ||
+    !selectedConversation.advancedAnalysis ||
+    creatingTask
+  ) {
+    return;
+  }
+
+  setCreatingTask(true);
+  setError("");
+
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error(
+        isEnglish
+          ? "You must be logged in."
+          : "يجب تسجيل الدخول."
+      );
+    }
+
+    const { data: membership, error: membershipError } =
+      await supabase
+        .from("company_members")
+        .select("company_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+
+    if (membershipError || !membership) {
+      throw new Error(
+        isEnglish
+          ? "Company membership not found."
+          : "تعذر العثور على الشركة المرتبطة بحسابك."
+      );
+    }
+
+    const analysis = selectedConversation.advancedAnalysis;
+
+    const priority =
+      analysis.priority === "عالية"
+        ? "high"
+        : analysis.priority === "منخفضة"
+          ? "low"
+          : "medium";
+
+    const description = [
+      "العميل: " + selectedConversation.customer,
+      "",
+      "ملخص التحليل: " + analysis.summary,
+      "",
+      "نية العميل: " + analysis.intent,
+      "",
+      "الإجراء المقترح: " + analysis.recommended_action,
+      "",
+      "سبب التحليل: " + analysis.reason,
+      "",
+      "المصدر: Advanced AI داخل BusinessOS",
+    ].join("\n");
+
+    const { error: taskError } = await supabase
+      .from("tasks")
+      .insert({
+        company_id: membership.company_id,
+        customer_id:
+          selectedConversation.customerId || null,
+        title:
+          "مراجعة محادثة " +
+          selectedConversation.customer,
+        description,
+        status: "pending",
+        priority,
+      });
+
+    if (taskError) {
       console.error(
-        "Supabase conversation status error:",
-        error
+        "[ADVANCED AI TASK ERROR]",
+        taskError
       );
 
-      setErrorMessage(text.errorStatus);
+      throw taskError;
+    }
+
+    setTaskCreated(true);
+
+    console.log(
+      "[ADVANCED AI TASK CREATED]",
+      selectedConversation.id
+    );
+  } catch (error) {
+    console.error(
+      "[ADVANCED AI TASK ERROR]",
+      error
+    );
+
+    setError(
+      isEnglish
+        ? "Failed to create task from AI analysis."
+        : "فشل إنشاء المهمة من تحليل الذكاء الاصطناعي."
+    );
+  } finally {
+    setCreatingTask(false);
+  }
+}
+
+  async function changeStatus(
+    status: ConversationStatus,
+  ) {
+    if (!selectedConversation) return;
+
+    try {
+      const { error: updateError } =
+        await supabase
+          .from("conversations")
+          .update({
+            status,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "id",
+            selectedConversation.id,
+          );
+
+      if (updateError)
+        throw updateError;
+
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id ===
+          selectedConversation.id
+            ? {
+                ...conversation,
+                status,
+              }
+            : conversation,
+        ),
+      );
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        isEnglish
+          ? "Could not update conversation status."
+          : "تعذر تحديث حالة المحادثة.",
+      );
     }
   }
 
-  if (!isLoaded) {
-    return (
-      <main
-        dir={isEnglish ? "ltr" : "rtl"}
-        className="flex min-h-[calc(100vh-40px)] items-center justify-center rounded-[24px] bg-[#f8f8f8]"
-      >
-        <div className="flex items-center gap-3 text-sm text-neutral-500">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-200 border-t-black" />
-          {isEnglish
-            ? "Loading conversations..."
-            : "جاري تحميل المحادثات..."}
-        </div>
-      </main>
-    );
+  async function clearSavedAdvancedAnalysis() {
+    if (!selectedConversation)
+      return;
+
+    try {
+      const { error: updateError } =
+        await supabase
+          .from("conversations")
+          .update({
+            ai_summary: null,
+            ai_intent: null,
+            ai_priority: null,
+            ai_is_lead: null,
+            ai_recommended_action:
+              null,
+            ai_reason: null,
+            ai_analyzed_at: null,
+          })
+          .eq(
+            "id",
+            selectedConversation.id,
+          );
+
+      if (updateError)
+        throw updateError;
+
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id ===
+          selectedConversation.id
+            ? {
+                ...conversation,
+                advancedAnalysis: null,
+              }
+            : conversation,
+        ),
+      );
+    } catch (err) {
+      console.error(err);
+    }
   }
 
-  if (accessDenied) {
-    return (
-      <main
-        dir={isEnglish ? "ltr" : "rtl"}
-        className="min-h-[calc(100vh-40px)] bg-[#f3f3f3] text-[#111]"
-      >
-        <div className="mx-auto flex min-h-[70vh] max-w-[1500px] items-center justify-center">
-          <div className="w-full max-w-2xl rounded-[24px] bg-white p-8 text-center shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:p-10">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-black text-white">
-              <MessageCircle className="h-7 w-7" />
-            </div>
+  function selectConversation(
+    id: string,
+  ) {
+    setSelectedId(id);
+    setConversationDrawerOpen(false);
+    setCustomerDrawerOpen(false);
+  }
 
-            <h1 className="mt-6 text-2xl font-bold">
-              {text.accessTitle}
-            </h1>
+  
 
-            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-neutral-500">
-              {text.accessDescription}{" "}
-              <span className="font-semibold text-black">
-                {text.currentPlan}: {planName}
-              </span>
-              .
-            </p>
+if (loading) {
+    
 
-            <div className="mt-6 rounded-2xl bg-neutral-50 p-4 text-sm text-neutral-600">
-              {text.upgrade}
-            </div>
+return (
+      <main className="min-h-screen bg-white p-6 text-black">
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="flex items-center gap-3 text-sm text-neutral-500">
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            {isEnglish
+              ? "Loading conversations..."
+              : "جاري تحميل المحادثات..."}
           </div>
         </div>
       </main>
     );
   }
+
+  if (!conversationsEnabled) {
+    return (
+      <main className="min-h-screen bg-white p-6 text-black">
+        <div className="mx-auto max-w-4xl rounded-2xl border border-neutral-200 p-10 text-center">
+          <MessageCircle className="mx-auto mb-4 h-10 w-10" />
+
+          <h1 className="text-2xl font-semibold">
+            {isEnglish
+              ? "Conversations"
+              : "المحادثات"}
+          </h1>
+
+          <p className="mt-2 text-sm text-neutral-500">
+            {isEnglish
+              ? "Conversations are not included in your current plan."
+              : "المحادثات غير متاحة في خطتك الحالية."}
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+
 
   return (
-    <main
-      dir={isEnglish ? "ltr" : "rtl"}
-      className="min-h-[calc(100vh-40px)] bg-[#f3f3f3] text-[#111]"
-    >
-      <div className="mx-auto max-w-[1500px]">
-        <header className="rounded-[24px] bg-white px-5 py-6 shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:px-7">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black text-white">
-                <MessageCircle className="h-5 w-5" />
-              </div>
+    <main className="min-h-screen bg-white text-black">
+      <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col p-4 md:p-6">
 
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  {text.businessOS}
-                </p>
+        {/* HEADER */}
 
-                <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
-                  {text.conversations}
-                </h1>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() =>
+                setConversationDrawerOpen(true)
+              }
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white transition hover:bg-neutral-50"
+              title={
+                isEnglish
+                  ? "Open conversations"
+                  : "فتح المحادثات"
+              }
+            >
+              <Menu className="h-5 w-5" />
+            </button>
 
-                <p className="mt-1 text-xs text-neutral-500 sm:text-sm">
-                  {text.subtitle}
-                </p>
-              </div>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-neutral-200">
+              <MessageCircle className="h-5 w-5" />
+            </div>
+
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-semibold tracking-tight md:text-2xl">
+                {isEnglish
+                  ? "Conversations"
+                  : "المحادثات"}
+              </h1>
+
+              <p className="hidden text-sm text-neutral-500 md:block">
+                {isEnglish
+                  ? "Customer communication workspace"
+                  : "مساحة العمل الخاصة بمحادثات العملاء"}
+              </p>
             </div>
           </div>
-        </header>
 
-        <div className="mt-5 space-y-5">
-          {errorMessage && (
-            <div className="rounded-2xl border border-red-100 bg-white px-4 py-3 text-sm text-red-600 shadow-[0_5px_25px_rgba(0,0,0,.03)]">
-              {errorMessage}
-            </div>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={loadConversations}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200 transition hover:bg-neutral-50"
+              title={
+                isEnglish
+                  ? "Refresh"
+                  : "تحديث"
+              }
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
 
-          <section className="rounded-[24px] bg-white p-5 shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:p-7">
-            <div className="mb-5 flex items-start gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white">
-                <Sparkles className="h-4 w-4" />
-              </div>
+            {selectedConversation && (
+              <button
+                type="button"
+                onClick={() =>
+                  setCustomerDrawerOpen(true)
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-black px-3.5 text-sm font-medium text-white transition hover:bg-neutral-800"
+              >
+                <User className="h-4 w-4" />
 
+                <span className="hidden sm:inline">
+                  {isEnglish
+                    ? "Customer data"
+                    : "بيانات العميل"}
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ERROR */}
+
+        {error && (
+          <div className="mb-4 flex items-start gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
+            <span>{error}</span>
+
+            <button
+              type="button"
+              onClick={() =>
+                setError("")
+              }
+              className="ml-auto"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* CONVERSATION */}
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+
+          {!selectedConversation ? (
+            <div className="flex flex-1 items-center justify-center p-8 text-center">
               <div>
-                <h2 className="text-base font-bold">
-                  {text.aiInsights}
+                <MessageCircle className="mx-auto mb-4 h-12 w-12 text-neutral-300" />
+
+                <h2 className="font-semibold">
+                  {isEnglish
+                    ? "Select a conversation"
+                    : "اختر محادثة"}
                 </h2>
 
-                <p className="mt-1 text-xs text-neutral-500">
-                  {text.aiInsightsDescription}
+                <p className="mt-2 text-sm text-neutral-500">
+                  {isEnglish
+                    ? "Open the conversation list to get started."
+                    : "افتح قائمة المحادثات للبدء."}
                 </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConversationDrawerOpen(true)
+                  }
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white"
+                >
+                  <Menu className="h-4 w-4" />
+
+                  {isEnglish
+                    ? "Open conversations"
+                    : "فتح المحادثات"}
+                </button>
               </div>
             </div>
+          ) : (
+            <>
+              {/* CONVERSATION HEADER */}
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <InsightCard
-                title={text.analyzed}
-                value={analyzedConversations.length}
-                icon={
-                  <Bot className="h-4 w-4" />
-                }
-              />
+              <div className="border-b border-neutral-200 bg-white p-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
 
-              <InsightCard
-                title={text.highPriority}
-                value={
-                  highPriorityConversations.length
-                }
-                icon={
-                  <AlertTriangle className="h-4 w-4" />
-                }
-                type="amber"
-              />
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black text-white">
+                      <User className="h-5 w-5" />
+                    </div>
 
-              <InsightCard
-                title={text.leads}
-                value={leadConversations.length}
-                icon={
-                  <Users className="h-4 w-4" />
-                }
-                type="green"
-              />
-
-              <InsightCard
-                title={text.attention}
-                value={
-                  conversationsNeedingAttention.length
-                }
-                icon={
-                  <Clock3 className="h-4 w-4" />
-                }
-              />
-            </div>
-          </section>
-
-          <section className="grid gap-4 sm:grid-cols-3">
-            <StatCard
-              title={text.total}
-              value={conversations.length}
-              icon={
-                <MessageCircle className="h-4 w-4" />
-              }
-            />
-
-            <StatCard
-              title={text.unread}
-              value={unreadCount}
-              icon={
-                <CircleDotIcon className="h-4 w-4" />
-              }
-            />
-
-            <StatCard
-              title={text.active}
-              value={activeCount}
-              icon={
-                <Clock3 className="h-4 w-4" />
-              }
-              type="amber"
-            />
-          </section>
-
-          <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_10px_45px_rgba(0,0,0,.05)]">
-            <div className="grid lg:grid-cols-[340px_1fr]">
-              <aside
-                className={`border-b border-neutral-100 lg:border-b-0 ${
-                  isEnglish
-                    ? "lg:border-r"
-                    : "lg:border-l"
-                }`}
-              >
-                <div className="border-b border-neutral-100 p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="font-bold">
-                        {text.conversations}
+                    <div className="min-w-0">
+                      <h2 className="truncate text-base font-semibold">
+                        {selectedConversation.customer}
                       </h2>
 
-                      <p className="mt-1 text-xs text-neutral-400">
-                        {text.chooseConversation}
-                      </p>
-                    </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                        <span>
+                          {getChannelLabel(
+                            selectedConversation.channel,
+                            locale,
+                          )}
+                        </span>
 
-                    <div className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-neutral-100 px-2 text-xs font-semibold text-neutral-600">
-                      {conversations.length}
+                        <span>•</span>
+
+                        <span>
+                          {
+                            selectedConversation.messages
+                              .length
+                          }{" "}
+                          {isEnglish
+                            ? "messages"
+                            : "رسالة"}
+                        </span>
+
+                        {selectedConversation.unread && (
+                          <>
+                            <span>•</span>
+
+                            <span className="font-medium text-black">
+                              {isEnglish
+                                ? "Unread"
+                                : "غير مقروءة"}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCustomerDrawerOpen(true)
+                      }
+                      className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 px-3 py-2 text-sm font-medium transition hover:bg-neutral-50"
+                    >
+                      <PanelRight className="h-4 w-4" />
+
+                      <span className="hidden sm:inline">
+                        {isEnglish
+                          ? "Customer data"
+                          : "بيانات العميل"}
+                      </span>
+                    </button>
+
+                    <select
+                      value={
+                        selectedConversation.status
+                      }
+                      onChange={(event) =>
+                        changeStatus(
+                          event.target
+                            .value as ConversationStatus,
+                        )
+                      }
+                      className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-black"
+                    >
+                      <option value="جديدة">
+                        {isEnglish
+                          ? "New"
+                          : "جديدة"}
+                      </option>
+
+                      <option value="قيد المتابعة">
+                        {isEnglish
+                          ? "In progress"
+                          : "قيد المتابعة"}
+                      </option>
+
+                      <option value="مغلقة">
+                        {isEnglish
+                          ? "Closed"
+                          : "مغلقة"}
+                      </option>
+                    </select>
+                  </div>
                 </div>
+              </div>
 
-                <div className="max-h-[320px] overflow-y-auto lg:max-h-[700px]">
-                  {conversations.length === 0 ? (
-                    <div className="p-8 text-center">
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-neutral-100">
-                        <MessageCircle className="h-5 w-5 text-neutral-400" />
-                      </div>
+              {/* AI TOOLBAR */}
 
-                      <p className="mt-4 text-sm font-semibold text-neutral-600">
-                        {text.noConversations}
-                      </p>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-neutral-50 p-3">
 
-                      <p className="mt-2 text-xs leading-5 text-neutral-400">
-                        {text.noConversationsDescription}
-                      </p>
-                    </div>
-                  ) : (
-                    conversations.map(
-                      (conversation) => (
-                        <button
-                          key={conversation.id}
-                          onClick={() =>
-                            selectConversation(
-                              conversation.id
-                            )
-                          }
-                          className={`w-full border-b border-neutral-100 p-4 text-start transition sm:p-5 ${
-                            selectedId ===
-                            conversation.id
-                              ? "bg-neutral-100"
-                              : "hover:bg-neutral-50"
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div
-                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                                selectedId ===
-                                conversation.id
-                                  ? "bg-black text-white"
-                                  : "bg-neutral-100 text-neutral-500"
-                              }`}
-                            >
-                              <User className="h-4 w-4" />
-                            </div>
+                <div className="flex flex-wrap items-center gap-2">
 
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="truncate text-sm font-semibold">
-                                  {conversation.customer}
-                                </p>
+                  {/* CURRENT REPLY MODE */}
 
-                                {conversation.unread && (
-                                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-black" />
-                                )}
-                              </div>
-
-                              <p className="mt-1 truncate text-xs text-neutral-400">
-                                {conversation.lastMessage ||
-                                  (isEnglish
-                                    ? "No messages"
-                                    : "لا توجد رسائل")}
-                              </p>
-
-                              <div className="mt-3">
-                                <StatusBadge
-                                  status={
-                                    conversation.status
-                                  }
-                                  text={text}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-                      )
-                    )
-                  )}
-                </div>
-              </aside>
-
-              <section className="flex min-h-[650px] min-w-0 flex-col">
-                {selectedConversation ? (
-                  <>
-                    <div className="border-b border-neutral-100 p-5">
-                      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-white">
-                            <User className="h-4 w-4" />
-                          </div>
-
-                          <div>
-                            <h2 className="font-bold">
-                              {
-                                selectedConversation.customer
-                              }
-                            </h2>
-
-                            <p className="mt-1 text-xs text-neutral-400">
-                              {text.customerConversation}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                          <button
-                            onClick={generateAIReply}
-                            disabled={
-                              isGenerating ||
-                              isAdvancedAnalyzing ||
-                              creatingTask
-                            }
-                            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-black px-4 text-xs font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-
-                            {isGenerating
-                              ? text.generating
-                              : text.aiReply}
-                          </button>
-
-                          {canUseAdvancedAI && (
-                            <button
-                              onClick={
-                                analyzeWithAdvancedAI
-                              }
-                              disabled={
-                                isGenerating ||
-                                isAdvancedAnalyzing ||
-                                creatingTask
-                              }
-                              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 text-xs font-semibold text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <Bot className="h-3.5 w-3.5" />
-
-                              {isAdvancedAnalyzing
-                                ? text.analyzing
-                                : text.advancedAI}
-                            </button>
-                          )}
-
-                          <select
-                            value={
-                              selectedConversation.status
-                            }
-                            onChange={(event) =>
-                              changeStatus(
-                                event.target
-                                  .value as ConversationStatus
-                              )
-                            }
-                            className="h-10 rounded-xl border border-neutral-200 bg-white px-3 text-xs font-medium outline-none focus:border-black"
-                          >
-                            <option value="جديدة">
-                              {text.statusNew}
-                            </option>
-
-                            <option value="قيد المتابعة">
-                              {text.statusActive}
-                            </option>
-
-                            <option value="مغلقة">
-                              {text.statusClosed}
-                            </option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {selectedConversation.advancedAnalysis && (
-                      <div className="border-b border-neutral-100 p-5">
-                        <div className="rounded-[20px] bg-neutral-50 p-5">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white">
-                                <Sparkles className="h-4 w-4" />
-                              </div>
-
-                              <div>
-                                <p className="text-[9px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
-                                  {text.enterprise}
-                                </p>
-
-                                <h3 className="mt-1 text-sm font-bold">
-                                  {text.analysis}
-                                </h3>
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={async () => {
-                                const conversationId =
-                                  selectedConversation.id;
-
-                                setConversations(
-                                  (current) =>
-                                    current.map(
-                                      (conversation) =>
-                                        conversation.id ===
-                                        conversationId
-                                          ? {
-                                              ...conversation,
-                                              advancedAnalysis:
-                                                null,
-                                            }
-                                          : conversation
-                                    )
-                                );
-
-                                setTaskCreated(false);
-
-                                await clearSavedAdvancedAnalysis(
-                                  conversationId
-                                );
-                              }}
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-white hover:text-black"
-                              aria-label={text.close}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-
-                          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                            <AnalysisItem
-                              label={text.summary}
-                              value={
-                                selectedConversation
-                                  .advancedAnalysis
-                                  .summary
-                              }
-                            />
-
-                            <AnalysisItem
-                              label={text.intent}
-                              value={
-                                selectedConversation
-                                  .advancedAnalysis
-                                  .intent
-                              }
-                            />
-
-                            <AnalysisItem
-                              label={text.priority}
-                              value={
-                                selectedConversation
-                                  .advancedAnalysis
-                                  .priority
-                              }
-                            />
-
-                            <AnalysisItem
-                              label={text.lead}
-                              value={
-                                selectedConversation
-                                  .advancedAnalysis
-                                  .is_lead
-                                  ? text.yes
-                                  : text.no
-                              }
-                            />
-
-                            <AnalysisItem
-                              label={
-                                text.recommendedAction
-                              }
-                              value={
-                                selectedConversation
-                                  .advancedAnalysis
-                                  .recommended_action
-                              }
-                              fullWidth
-                            />
-
-                            <AnalysisItem
-                              label={text.reason}
-                              value={
-                                selectedConversation
-                                  .advancedAnalysis
-                                  .reason
-                              }
-                              fullWidth
-                            />
-
-                            <div className="sm:col-span-2">
-                              <button
-                                type="button"
-                                onClick={
-                                  createTaskFromAnalysis
-                                }
-                                disabled={
-                                  creatingTask ||
-                                  taskCreated
-                                }
-                                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-black px-4 text-xs font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {taskCreated ? (
-                                  <CheckCircle2 className="h-4 w-4" />
-                                ) : (
-                                  <Clock3 className="h-4 w-4" />
-                                )}
-
-                                {creatingTask
-                                  ? text.creatingTask
-                                  : taskCreated
-                                    ? text.taskCreated
-                                    : text.createTask}
-                              </button>
-                            </div>
-                          </div>
-
-                          {selectedConversation
-                            .advancedAnalysis
-                            .analyzed_at && (
-                            <p className="mt-4 text-[10px] text-neutral-400">
-                              {text.lastAnalysis}:{" "}
-                              {new Date(
-                                selectedConversation
-                                  .advancedAnalysis
-                                  .analyzed_at
-                              ).toLocaleString(
-                                isEnglish
-                                  ? "en-US"
-                                  : "ar-EG"
-                              )}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs">
+                    {replyMode ===
+                    "ai_auto" ? (
+                      <Zap className="h-3.5 w-3.5" />
+                    ) : (
+                      <Bot className="h-3.5 w-3.5" />
                     )}
 
-                    <div className="flex-1 space-y-4 overflow-y-auto bg-[#f8f8f8] p-4 sm:p-6">
-                      {selectedConversation.messages
-                        .length === 0 ? (
-                        <div className="flex h-full min-h-[350px] items-center justify-center">
-                          <div className="text-center">
-                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-white text-neutral-400 shadow-sm">
-                              <MessageCircle className="h-5 w-5" />
-                            </div>
+                    <span>
+                      {isEnglish
+                        ? "Mode:"
+                        : "الوضع:"}
+                    </span>
 
-                            <p className="mt-4 text-sm font-semibold text-neutral-600">
-                              {isEnglish
-                                ? "No messages yet"
-                                : "لا توجد رسائل حتى الآن"}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        selectedConversation.messages.map(
-                          (item) => (
+                    <span className="font-semibold">
+                      {getReplyModeLabel(
+                        replyMode,
+                        isEnglish,
+                      )}
+                    </span>
+                  </div>
+
+                  {/* AI SUGGEST / MANUAL BUTTON */}
+
+                  {replyMode !==
+                    "ai_auto" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        generateAIReply()
+                      }
+                      disabled={sending}
+                      className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Bot className="h-4 w-4" />
+
+                      {sending
+                        ? isEnglish
+                          ? "Generating..."
+                          : "جاري الإنشاء..."
+                        : isEnglish
+                          ? "AI Reply"
+                          : "رد بالذكاء الاصطناعي"}
+                    </button>
+                  )}
+
+                  {replyMode ===
+                    "ai_auto" && (
+                    <div className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-medium text-white">
+                      <Zap className="h-4 w-4" />
+
+                      {isEnglish
+                        ? "AI Auto Reply Active"
+                        : "الرد التلقائي بالذكاء الاصطناعي مفعل"}
+                    </div>
+                  )}
+
+                  {advancedAiEnabled && (
+                    <button
+                      type="button"
+                      onClick={
+                        analyzeWithAdvancedAI
+                      }
+                      disabled={analyzing}
+                      className="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-medium transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Sparkles className="h-4 w-4" />
+
+                      {analyzing
+                        ? isEnglish
+                          ? "Analyzing..."
+                          : "جاري التحليل..."
+                        : isEnglish
+                          ? "Advanced AI"
+                          : "تحليل AI متقدم"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="hidden text-xs text-neutral-400 md:block">
+                  {isEnglish
+                    ? `${activeCount} active • ${unreadCount} unread`
+                    : `${activeCount} نشطة • ${unreadCount} غير مقروءة`}
+                </div>
+              </div>
+
+              {/* MESSAGES */}
+
+              <div className="min-h-0 flex-1 overflow-y-auto bg-white p-4 md:p-6">
+                {selectedConversation.messages.length ===
+                0 ? (
+                  <div className="flex h-full min-h-[400px] items-center justify-center text-center">
+                    <div>
+                      <MessageCircle className="mx-auto mb-4 h-10 w-10 text-neutral-300" />
+
+                      <p className="text-sm text-neutral-500">
+                        {isEnglish
+                          ? "No messages yet."
+                          : "لا توجد رسائل حتى الآن."}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+                    {selectedConversation.messages.map(
+                      (message) => {
+                        const mine =
+                          message.sender === "me";
+
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${
+                              mine
+                                ? "justify-end"
+                                : "justify-start"
+                            }`}
+                          >
                             <div
-                              key={item.id}
-                              className={`flex ${
-                                item.sender === "me"
-                                  ? "justify-start"
-                                  : "justify-end"
+                              className={`max-w-[85%] rounded-2xl px-4 py-3 md:max-w-[70%] ${
+                                mine
+                                  ? "bg-black text-white"
+                                  : "border border-neutral-200 bg-neutral-50"
                               }`}
                             >
-                              <div
-                                className={`max-w-[92%] sm:max-w-[78%] ${
-                                  item.sender === "me"
-                                    ? "rounded-2xl rounded-ss-md bg-black text-white"
-                                    : "rounded-2xl rounded-se-md bg-white text-neutral-900 shadow-sm"
-                                } px-4 py-3`}
-                              >
-                                <div className="mb-1 flex items-center gap-2">
-                                  <div
-                                    className={`flex h-5 w-5 items-center justify-center rounded-md ${
-                                      item.sender === "me"
-                                        ? "bg-white/10"
-                                        : "bg-neutral-100"
-                                    }`}
-                                  >
-                                    {item.sender ===
-                                    "me" ? (
-                                      <Bot className="h-3 w-3" />
-                                    ) : (
-                                      <User className="h-3 w-3" />
-                                    )}
-                                  </div>
+                              <p className="whitespace-pre-wrap text-sm leading-6">
+                                {message.text}
+                              </p>
 
-                                  <p className="text-[9px] font-medium opacity-60">
-                                    {item.sender ===
-                                    "me"
-                                      ? text.businessOS
-                                      : selectedConversation.customer}
-                                  </p>
-                                </div>
-
-                                <p className="break-words text-sm leading-6">
-                                  {item.text}
-                                </p>
-
-                                <p
-                                  className={`mt-2 text-[9px] ${
-                                    item.sender ===
-                                    "me"
-                                      ? "text-neutral-400"
+                              {message.time && (
+                                <div
+                                  className={`mt-2 text-[10px] ${
+                                    mine
+                                      ? "text-white/50"
                                       : "text-neutral-400"
                                   }`}
                                 >
-                                  {item.time}
-                                </p>
-                              </div>
-                            </div>
-                          )
-                        )
-                      )}
-
-                      {isGenerating && (
-                        <div className="flex justify-start">
-                          <div className="rounded-2xl rounded-ss-md bg-black px-4 py-3 text-white">
-                            <div className="flex items-center gap-2">
-                              <Sparkles className="h-3.5 w-3.5" />
-
-                              <p className="text-xs">
-                                {text.aiWriting}
-                              </p>
+                                  {message.time}
+                                </div>
+                              )}
                             </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      },
+                    )}
+                  </div>
+                )}
+              </div>
 
-                      {isAdvancedAnalyzing && (
-                        <div className="flex justify-start">
-                          <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <Bot className="h-3.5 w-3.5 text-neutral-500" />
+              {/* ADVANCED AI ANALYSIS */}
 
-                              <p className="text-xs text-neutral-500">
-                                {text.aiAnalyzing}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+              {selectedConversation?.advancedAnalysis && (
+                <div className="border-t border-neutral-200 bg-neutral-50 p-4 md:p-5">
+                  <div className="mx-auto max-w-5xl">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" />
+
+                        <h3 className="text-sm font-semibold">
+                          {isEnglish
+                            ? "Advanced AI Analysis"
+                            : "تحليل AI المتقدم"}
+                        </h3>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={clearSavedAdvancedAnalysis}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-400 transition hover:text-black"
+                        title={
+                          isEnglish
+                            ? "Clear analysis"
+                            : "مسح التحليل"
+                        }
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
                     </div>
 
-                    <div className="border-t border-neutral-100 bg-white p-4 sm:p-5">
-                      <div className="flex flex-col gap-3 sm:flex-row">
-                        <input
-                          value={message}
-                          onChange={(event) =>
-                            setMessage(event.target.value)
-                          }
-                          onKeyDown={(event) => {
-                            if (
-                              event.key === "Enter" &&
-                              !event.shiftKey
-                            ) {
-                              event.preventDefault();
-                              sendMessage();
-                            }
-                          }}
-                          disabled={
-                            isGenerating ||
-                            isAdvancedAnalyzing ||
-                            creatingTask
-                          }
-                          placeholder={text.writeReply}
-                          className="h-11 min-w-0 flex-1 rounded-xl border border-neutral-200 bg-white px-4 text-sm outline-none transition placeholder:text-neutral-400 focus:border-black focus:ring-2 focus:ring-neutral-100 disabled:bg-neutral-50"
-                        />
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {selectedConversation.advancedAnalysis.summary && (
+                        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                          <div className="mb-2 text-xs font-semibold">
+                            {isEnglish ? "Summary" : "الملخص"}
+                          </div>
 
-                        <button
-                          onClick={sendMessage}
-                          disabled={
-                            isGenerating ||
-                            isAdvancedAnalyzing ||
-                            creatingTask ||
-                            !message.trim()
-                          }
-                          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-black px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                          <p className="text-xs leading-5 text-neutral-600">
+                            {selectedConversation.advancedAnalysis.summary}
+                          </p>
+                        </div>
+                      )}
+
+                      {selectedConversation.advancedAnalysis.intent && (
+                        <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                          <div className="mb-2 text-xs font-semibold">
+                            {isEnglish ? "Intent" : "النية"}
+                          </div>
+
+                          <p className="text-xs leading-5 text-neutral-600">
+                            {selectedConversation.advancedAnalysis.intent}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                        <div className="mb-2 text-xs font-semibold">
+                          {isEnglish ? "Priority" : "الأولوية"}
+                        </div>
+
+                        <span className="inline-flex rounded-full border border-neutral-200 px-3 py-1.5 text-[10px]">
+                          {selectedConversation.advancedAnalysis.priority}
+                        </span>
+                      </div>
+
+                      <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                        <div className="mb-2 text-xs font-semibold">
+                          {isEnglish
+                            ? "Lead status"
+                            : "حالة العميل المحتمل"}
+                        </div>
+
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1.5 text-[10px] ${
+                            selectedConversation.advancedAnalysis.is_lead
+                              ? "bg-black text-white"
+                              : "border border-neutral-200"
+                          }`}
                         >
-                          <Send className="h-4 w-4" />
-                          {text.send}
-                        </button>
+                          {selectedConversation.advancedAnalysis.is_lead
+                            ? isEnglish
+                              ? "Lead"
+                              : "عميل محتمل"
+                            : isEnglish
+                              ? "Not a lead"
+                              : "ليس عميلاً محتملاً"}
+                        </span>
                       </div>
 
-                      <p className="mt-3 text-[10px] text-neutral-400">
-                        {text.manualOrAI}
-                      </p>
+                      {selectedConversation.advancedAnalysis.recommended_action && (
+                        <div className="rounded-xl border border-neutral-200 bg-white p-4 md:col-span-2">
+                          <div className="mb-2 text-xs font-semibold">
+                            {isEnglish
+                              ? "Recommended action"
+                              : "الإجراء المقترح"}
+                          </div>
+
+                          <p className="text-xs leading-5 text-neutral-600">
+                            {
+                              selectedConversation.advancedAnalysis
+                                .recommended_action
+                            }
+                          </p>
+                        </div>
+                      )}
+
+                      {selectedConversation.advancedAnalysis.reason && (
+                        <div className="rounded-xl border border-neutral-200 bg-white p-4 md:col-span-2">
+                          <div className="mb-2 text-xs font-semibold">
+                            {isEnglish ? "Reason" : "السبب"}
+                          </div>
+
+                          <p className="text-xs leading-5 text-neutral-600">
+                            {selectedConversation.advancedAnalysis.reason}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  </>
-                ) : (
-                  <div className="flex flex-1 items-center justify-center p-8">
-                    <div className="text-center">
-                      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-400">
-                        <MessageCircle className="h-6 w-6" />
+
+                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={createTaskFromAnalysis}
+                        disabled={creatingTask || taskCreated}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+                      >
+                        <Plus className="h-4 w-4" />
+
+                        {creatingTask
+                          ? isEnglish
+                            ? "Creating..."
+                            : "جاري الإنشاء..."
+                          : taskCreated
+                            ? isEnglish
+                              ? "Task created"
+                              : "تم إنشاء المهمة"
+                            : isEnglish
+                              ? "Create task"
+                              : "إنشاء مهمة"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={updateCustomerFromAnalysis}
+                        disabled={updatingCustomer || customerUpdated}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-black bg-white px-4 py-3 text-xs font-medium text-black transition hover:bg-neutral-100 disabled:opacity-50"
+                      >
+                        <Plus className="h-4 w-4" />
+
+                        {updatingCustomer
+                          ? isEnglish
+                            ? "Updating..."
+                            : "جاري تحديث العميل..."
+                          : customerUpdated
+                            ? isEnglish
+                              ? "Customer updated"
+                              : "تم تحديث العميل"
+                            : isEnglish
+                              ? "Update customer"
+                              : "تحديث العميل"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={createOrderFromAnalysis}
+                        disabled={creatingOrder || orderCreated}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-black bg-white px-4 py-3 text-xs font-medium text-black transition hover:bg-neutral-100 disabled:opacity-50"
+                      >
+                        <Plus className="h-4 w-4" />
+
+                        {creatingOrder
+                          ? isEnglish
+                            ? "Creating..."
+                            : "جاري إنشاء الطلب..."
+                          : orderCreated
+                            ? isEnglish
+                              ? "Order created"
+                              : "تم إنشاء الطلب"
+                            : isEnglish
+                              ? "Create order"
+                              : "إنشاء طلب"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* REPLY COMPOSER */}
+
+              <div className="border-t border-neutral-200 bg-white p-3 md:p-4">
+                <div className="mx-auto max-w-5xl">
+                  <div className="flex items-end gap-2">
+                    <textarea
+                      value={reply}
+                      onChange={(event) =>
+                        setReply(
+                          event.target.value,
+                        )
+                      }
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === "Enter" &&
+                          !event.shiftKey
+                        ) {
+                          event.preventDefault();
+                          sendMessage();
+                        }
+                      }}
+                      placeholder={
+                        isEnglish
+                          ? "Write a reply..."
+                          : "اكتب ردًا..."
+                      }
+                      rows={2}
+                      className="min-h-[52px] flex-1 resize-none rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none focus:border-black"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={sendMessage}
+                      disabled={
+                        !reply.trim() ||
+                        sending
+                      }
+                      className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl bg-black text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Send className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <p className="mt-2 text-[11px] text-neutral-400">
+                    {isEnglish
+                      ? "Enter to send • Shift + Enter for a new line"
+                      : "Enter للإرسال • Shift + Enter لسطر جديد"}
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* OVERLAY */}
+
+      {(conversationDrawerOpen ||
+        customerDrawerOpen) && (
+        <button
+          type="button"
+          aria-label="Close drawer"
+          onClick={() => {
+            setConversationDrawerOpen(
+              false,
+            );
+            setCustomerDrawerOpen(
+              false,
+            );
+          }}
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[1px]"
+        />
+      )}
+
+      {/* LEFT DRAWER */}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-[min(390px,92vw)] flex-col border-r border-neutral-200 bg-white shadow-2xl transition-transform duration-300 ${
+          conversationDrawerOpen
+            ? "translate-x-0"
+            : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-neutral-200 p-4">
+          <div>
+            <h2 className="font-semibold">
+              {isEnglish
+                ? "Conversations"
+                : "المحادثات"}
+            </h2>
+
+            <p className="mt-1 text-xs text-neutral-500">
+              {activeCount}{" "}
+              {isEnglish
+                ? "active"
+                : "نشطة"}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setConversationDrawerOpen(
+                false,
+              )
+            }
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 hover:bg-neutral-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-4 py-3">
+          <span className="text-xs text-neutral-500">
+            {isEnglish
+              ? "All conversations"
+              : "كل المحادثات"}
+          </span>
+
+          <span className="rounded-full border border-neutral-200 bg-white px-2 py-1 text-[10px]">
+            {conversations.length}
+          </span>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {conversations.length ===
+          0 ? (
+            <div className="p-8 text-center text-sm text-neutral-500">
+              {isEnglish
+                ? "No conversations yet."
+                : "لا توجد محادثات حتى الآن."}
+            </div>
+          ) : (
+            conversations.map(
+              (conversation) => {
+                const active =
+                  conversation.id ===
+                  selectedConversation?.id;
+
+              
+
+
+
+  return (
+                  <button
+                    key={conversation.id}
+                    type="button"
+                    onClick={() =>
+                      selectConversation(
+                        conversation.id,
+                      )
+                    }
+                    className={`w-full border-b border-neutral-200 p-4 text-left transition ${
+                      active
+                        ? "bg-black text-white"
+                        : "bg-white hover:bg-neutral-50"
+                    }`}
+                  >
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border ${
+                          active
+                            ? "border-white/20 bg-white/10"
+                            : "border-neutral-200 bg-neutral-50"
+                        }`}
+                      >
+                        <User className="h-4 w-4" />
                       </div>
 
-                      <p className="mt-4 text-sm font-semibold text-neutral-600">
-                        {text.noSelectedConversation}
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-semibold">
+                            {
+                              conversation.customer
+                            }
+                          </span>
+
+                          {conversation.unread && (
+                            <span
+                              className={`h-2 w-2 shrink-0 rounded-full ${
+                                active
+                                  ? "bg-white"
+                                  : "bg-black"
+                              }`}
+                            />
+                          )}
+                        </div>
+
+                        <div
+                          className={`mt-1 text-[11px] ${
+                            active
+                              ? "text-white/60"
+                              : "text-neutral-500"
+                          }`}
+                        >
+                          {getChannelLabel(
+                            conversation.channel,
+                            locale,
+                          )}
+                        </div>
+
+                        <p
+                          className={`mt-2 line-clamp-2 text-xs leading-5 ${
+                            active
+                              ? "text-white/70"
+                              : "text-neutral-500"
+                          }`}
+                        >
+                          {conversation.lastMessage ||
+                            (isEnglish
+                              ? "No messages"
+                              : "لا توجد رسائل")}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              },
+            )
+          )}
+        </div>
+      </aside>
+
+      {/* RIGHT CUSTOMER DRAWER */}
+
+      <aside
+        className={`fixed inset-y-0 right-0 z-50 flex w-[min(430px,94vw)] flex-col border-l border-neutral-200 bg-white shadow-2xl transition-transform duration-300 ${
+          customerDrawerOpen
+            ? "translate-x-0"
+            : "translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-neutral-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black text-white">
+              <User className="h-4 w-4" />
+            </div>
+
+            <div>
+              <h2 className="font-semibold">
+                {isEnglish
+                  ? "Customer data"
+                  : "بيانات العميل"}
+              </h2>
+
+              <p className="mt-1 text-xs text-neutral-500">
+                {customer?.name ||
+                  selectedConversation?.customer ||
+                  "—"}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              setCustomerDrawerOpen(
+                false,
+              )
+            }
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 hover:bg-neutral-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {loadingContext ? (
+          <div className="flex flex-1 items-center justify-center">
+            <div className="flex items-center gap-2 text-sm text-neutral-500">
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              {isEnglish
+                ? "Loading customer..."
+                : "جاري تحميل بيانات العميل..."}
+            </div>
+          </div>
+        ) : !customer ? (
+          <div className="flex flex-1 items-center justify-center p-8 text-center">
+            <div>
+              <User className="mx-auto mb-3 h-10 w-10 text-neutral-300" />
+
+              <p className="text-sm text-neutral-500">
+                {selectedConversation?.customerId
+                  ? isEnglish
+                    ? "Customer record not found."
+                    : "لم يتم العثور على سجل العميل."
+                  : isEnglish
+                    ? "No customer linked."
+                    : "لا يوجد عميل مرتبط."}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+
+            {/* CUSTOMER PROFILE */}
+
+            <div className="border-b border-neutral-200 p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-black text-white">
+                  <User className="h-6 w-6" />
+                </div>
+
+                <div className="min-w-0">
+                  <h3 className="truncate text-base font-semibold">
+                    {customer.name}
+                  </h3>
+
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {isEnglish
+                      ? "Customer"
+                      : "عميل"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+
+                {customer.email && (
+                  <div className="flex items-center gap-3 rounded-xl border border-neutral-200 p-3">
+                    <Mail className="h-4 w-4 shrink-0 text-neutral-400" />
+
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-neutral-400">
+                        {isEnglish
+                          ? "Email"
+                          : "البريد الإلكتروني"}
+                      </div>
+
+                      <div className="mt-0.5 truncate text-sm">
+                        {customer.email}
+                      </div>
                     </div>
                   </div>
                 )}
-              </section>
+
+                {customer.phone && (
+                  <div className="flex items-center gap-3 rounded-xl border border-neutral-200 p-3">
+                    <Phone className="h-4 w-4 shrink-0 text-neutral-400" />
+
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-neutral-400">
+                        {isEnglish
+                          ? "Phone"
+                          : "الهاتف"}
+                      </div>
+
+                      <div
+                        dir="ltr"
+                        className="mt-0.5 truncate text-sm"
+                      >
+                        {customer.phone}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 rounded-xl border border-neutral-200 p-3">
+                  <CalendarDays className="h-4 w-4 shrink-0 text-neutral-400" />
+
+                  <div>
+                    <div className="text-[10px] text-neutral-400">
+                      {isEnglish
+                        ? "Customer since"
+                        : "تاريخ إنشاء العميل"}
+                    </div>
+
+                    <div className="mt-0.5 text-sm">
+                      {formatDate(
+                        customer.created_at,
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {customer.notes && (
+                <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                  <div className="mb-2 text-xs font-semibold">
+                    {isEnglish
+                      ? "Notes"
+                      : "ملاحظات"}
+                  </div>
+
+                  <p className="whitespace-pre-wrap text-xs leading-5 text-neutral-600">
+                    {customer.notes}
+                  </p>
+                </div>
+              )}
             </div>
-          </section>
-        </div>
-      </div>
+
+            {/* ORDERS */}
+
+            <div className="border-b border-neutral-200 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+
+                  <h3 className="text-sm font-semibold">
+                    {isEnglish
+                      ? "Orders"
+                      : "الطلبات"}
+                  </h3>
+                </div>
+
+                <span className="rounded-full border border-neutral-200 px-2.5 py-1 text-xs">
+                  {customerOrders.length}
+                </span>
+              </div>
+
+              {customerOrders.length ===
+              0 ? (
+                <p className="text-xs text-neutral-500">
+                  {isEnglish
+                    ? "No orders."
+                    : "لا توجد طلبات."}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {customerOrders.map(
+                    (order) => (
+                      <div
+                        key={order.id}
+                        className="rounded-xl border border-neutral-200 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold">
+                              {order.service ||
+                                (isEnglish
+                                  ? "Order"
+                                  : "طلب")}
+                            </div>
+
+                            <div className="mt-1 text-[10px] text-neutral-400">
+                              {formatDate(
+                                order.created_at,
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 text-xs font-semibold">
+                            {formatMoney(
+                              order.total,
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-neutral-200 px-2 py-1 text-[10px]">
+                            {getStatusLabel(
+                              order.status,
+                              locale,
+                            )}
+                          </span>
+                        </div>
+
+                        {order.notes && (
+                          <p className="mt-3 text-[11px] leading-5 text-neutral-500">
+                            {order.notes}
+                          </p>
+                        )}
+                      </div>
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* TASKS */}
+
+            <div className="border-b border-neutral-200 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ListTodo className="h-4 w-4" />
+
+                  <h3 className="text-sm font-semibold">
+                    {isEnglish
+                      ? "Tasks"
+                      : "المهام"}
+                  </h3>
+                </div>
+
+                <span className="rounded-full border border-neutral-200 px-2.5 py-1 text-xs">
+                  {customerTasks.length}
+                </span>
+              </div>
+
+              {customerTasks.length ===
+              0 ? (
+                <p className="text-xs text-neutral-500">
+                  {isEnglish
+                    ? "No tasks."
+                    : "لا توجد مهام."}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {customerTasks.map(
+                    (task) => (
+                      <div
+                        key={task.id}
+                        className="rounded-xl border border-neutral-200 p-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          {task.status ===
+                            "مكتملة" ||
+                          task.status ===
+                            "completed" ||
+                          task.status ===
+                            "done" ? (
+                            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                          ) : (
+                            <Clock3 className="mt-0.5 h-4 w-4 shrink-0" />
+                          )}
+
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold">
+                              {task.title}
+                            </div>
+
+                            {task.description && (
+                              <p className="mt-1 text-[11px] leading-5 text-neutral-500">
+                                {
+                                  task.description
+                                }
+                              </p>
+                            )}
+
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {task.status && (
+                                <span className="rounded-full border border-neutral-200 px-2 py-1 text-[10px]">
+                                  {getStatusLabel(
+                                    task.status,
+                                    locale,
+                                  )}
+                                </span>
+                              )}
+
+                              {task.priority && (
+                                <span className="rounded-full border border-neutral-200 px-2 py-1 text-[10px]">
+                                  {
+                                    task.priority
+                                  }
+                                </span>
+                              )}
+
+                              {task.due_date && (
+                                <span className="rounded-full border border-neutral-200 px-2 py-1 text-[10px]">
+                                  {formatDate(
+                                    task.due_date,
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* AI ANALYSIS */}
+
+            {selectedConversation?.advancedAnalysis && (
+              <div className="p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4" />
+
+                    <h3 className="text-sm font-semibold">
+                      {isEnglish
+                        ? "AI Analysis"
+                        : "تحليل AI"}
+                    </h3>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      clearSavedAdvancedAnalysis
+                    }
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 transition hover:text-black"
+                    title={
+                      isEnglish
+                        ? "Clear analysis"
+                        : "مسح التحليل"
+                    }
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+
+                  {selectedConversation
+                    .advancedAnalysis
+                    .summary && (
+                    <div className="rounded-xl border border-neutral-200 p-4">
+                      <div className="mb-2 text-xs font-semibold">
+                        {isEnglish
+                          ? "Summary"
+                          : "الملخص"}
+                      </div>
+
+                      <p className="text-xs leading-5 text-neutral-600">
+                        {
+                          selectedConversation
+                            .advancedAnalysis
+                            .summary
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedConversation
+                    .advancedAnalysis
+                    .intent && (
+                    <div className="rounded-xl border border-neutral-200 p-4">
+                      <div className="mb-2 text-xs font-semibold">
+                        {isEnglish
+                          ? "Intent"
+                          : "النية"}
+                      </div>
+
+                      <p className="text-xs leading-5 text-neutral-600">
+                        {
+                          selectedConversation
+                            .advancedAnalysis
+                            .intent
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full border border-neutral-200 px-3 py-1.5 text-[10px]">
+                      {isEnglish
+                        ? "Priority: "
+                        : "الأولوية: "}
+
+                      {
+                        selectedConversation
+                          .advancedAnalysis
+                          .priority
+                      }
+                    </span>
+
+                    {selectedConversation
+                      .advancedAnalysis
+                      .is_lead && (
+                      <span className="rounded-full bg-black px-3 py-1.5 text-[10px] text-white">
+                        {isEnglish
+                          ? "Lead"
+                          : "عميل محتمل"}
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedConversation
+                    .advancedAnalysis
+                    .recommended_action && (
+                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                      <div className="mb-2 text-xs font-semibold">
+                        {isEnglish
+                          ? "Recommended action"
+                          : "الإجراء المقترح"}
+                      </div>
+
+                      <p className="text-xs leading-5 text-neutral-600">
+                        {
+                          selectedConversation
+                            .advancedAnalysis
+                            .recommended_action
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedConversation
+                    .advancedAnalysis
+                    .reason && (
+                    <div className="rounded-xl border border-neutral-200 p-4">
+                      <div className="mb-2 text-xs font-semibold">
+                        {isEnglish
+                          ? "Reason"
+                          : "السبب"}
+                      </div>
+
+                      <p className="text-xs leading-5 text-neutral-600">
+                        {
+                          selectedConversation
+                            .advancedAnalysis
+                            .reason
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={updateCustomerFromAnalysis}
+                      disabled={updatingCustomer || customerUpdated}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-black bg-white px-4 py-3 text-xs font-medium text-black transition hover:bg-neutral-100 disabled:opacity-50"
+                    >
+                      <Plus className="h-4 w-4" />
+
+                      {updatingCustomer
+                        ? isEnglish
+                          ? "Updating..."
+                          : "جاري تحديث العميل..."
+                        : customerUpdated
+                          ? isEnglish
+                            ? "Customer updated"
+                            : "تم تحديث العميل"
+                          : isEnglish
+                            ? "Update customer"
+                            : "تحديث العميل"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={
+                        createTaskFromAnalysis
+                      }
+                    disabled={creatingTask}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+
+                    {creatingTask
+                      ? isEnglish
+                        ? "Creating..."
+                        : "جاري الإنشاء..."
+                      : isEnglish
+                        ? "Create task"
+                        : "إنشاء مهمة"}
+                  </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </aside>
     </main>
   );
 }
 
-function CircleDotIcon({
-  className,
-}: {
-  className?: string;
-}) {
-  return (
-    <span
-      className={`inline-flex items-center justify-center ${className || ""}`}
-    >
-      <span className="h-2.5 w-2.5 rounded-full bg-current" />
-    </span>
-  );
-}
 
-function InsightCard({
-  title,
-  value,
-  icon,
-  type = "default",
-}: {
-  title: string;
-  value: number;
-  icon: React.ReactNode;
-  type?: "default" | "amber" | "green";
-}) {
-  const iconStyles = {
-    default: "bg-neutral-100 text-neutral-500",
-    amber: "bg-amber-50 text-amber-600",
-    green: "bg-emerald-50 text-emerald-600",
-  };
 
-  return (
-    <div className="rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:bg-white hover:shadow-sm">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-[11px] font-medium text-neutral-500">
-            {title}
-          </p>
 
-          <p className="mt-3 text-2xl font-bold tracking-tight">
-            {value}
-          </p>
-        </div>
 
-        <div
-          className={`flex h-9 w-9 items-center justify-center rounded-xl ${iconStyles[type]}`}
-        >
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function StatCard({
-  title,
-  value,
-  icon,
-  type = "default",
-}: {
-  title: string;
-  value: number;
-  icon: React.ReactNode;
-  type?: "default" | "amber";
-}) {
-  return (
-    <div className="rounded-[20px] bg-white p-5 shadow-[0_8px_35px_rgba(0,0,0,.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(0,0,0,.07)]">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-neutral-500">
-            {title}
-          </p>
 
-          <p className="mt-3 text-3xl font-bold tracking-tight">
-            {value}
-          </p>
-        </div>
 
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-            type === "amber"
-              ? "bg-amber-50 text-amber-600"
-              : "bg-black text-white"
-          }`}
-        >
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AnalysisItem({
-  label,
-  value,
-  fullWidth = false,
-}: {
-  label: string;
-  value: string;
-  fullWidth?: boolean;
-}) {
-  return (
-    <div
-      className={`rounded-xl border border-neutral-200 bg-white p-3 ${
-        fullWidth ? "sm:col-span-2" : ""
-      }`}
-    >
-      <p className="text-[10px] font-semibold text-neutral-400">
-        {label}
-      </p>
-
-      <p className="mt-1 text-sm leading-6 text-neutral-700">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function StatusBadge({
-  status,
-  text,
-}: {
-  status: ConversationStatus;
-  text: {
-    statusNew: string;
-    statusActive: string;
-    statusClosed: string;
-  };
-}) {
-  const styles: Record<
-    ConversationStatus,
-    string
-  > = {
-    جديدة: "bg-neutral-100 text-neutral-600",
-    "قيد المتابعة":
-      "bg-amber-50 text-amber-700",
-    مغلقة: "bg-black text-white",
-  };
-
-  const labels: Record<
-    ConversationStatus,
-    string
-  > = {
-    جديدة: text.statusNew,
-    "قيد المتابعة": text.statusActive,
-    مغلقة: text.statusClosed,
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] font-semibold ${styles[status]}`}
-    >
-      <span
-        className={`h-1.5 w-1.5 rounded-full ${
-          status === "مغلقة"
-            ? "bg-white"
-            : status === "قيد المتابعة"
-              ? "bg-amber-500"
-              : "bg-neutral-400"
-        }`}
-      />
-
-      {labels[status]}
-    </span>
-  );
-}

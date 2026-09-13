@@ -17,8 +17,17 @@ import {
   Users,
   Mail,
   QrCode,
+  MessageCircle,
+  Plug,
+  Bot,
+  UserRound,
+  Zap,
+  GitMerge,
+  Save,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+
+type ReplyMode = "manual" | "ai_suggest" | "ai_auto" | "hybrid";
 
 export default function SettingsPage() {
   const locale = useLocale();
@@ -26,10 +35,20 @@ export default function SettingsPage() {
 
   const [email, setEmail] = useState("");
   const [isOwner, setIsOwner] = useState(false);
+  const [companyId, setCompanyId] = useState("");
+
+  const [replyMode, setReplyMode] =
+    useState<ReplyMode>("manual");
+  const [savingReplyMode, setSavingReplyMode] =
+    useState(false);
+  const [replyModeSaved, setReplyModeSaved] =
+    useState(false);
 
   const [aiEnabled, setAiEnabled] = useState(true);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [taskNotifications, setTaskNotifications] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] =
+    useState(true);
+  const [taskNotifications, setTaskNotifications] =
+    useState(true);
   const [conversationNotifications, setConversationNotifications] =
     useState(true);
   const [saved, setSaved] = useState(false);
@@ -37,10 +56,12 @@ export default function SettingsPage() {
   const text = isEnglish
     ? {
         title: "Settings",
-        subtitle: "Manage your BusinessOS workspace and preferences.",
+        subtitle:
+          "Manage your BusinessOS workspace and preferences.",
         workspace: "Workspace",
         workspaceName: "BusinessOS PRO",
-        workspaceDescription: "Professional business workspace",
+        workspaceDescription:
+          "Professional business workspace",
         plan: "Current plan",
         planValue: "PRO",
         account: "Account",
@@ -66,7 +87,8 @@ export default function SettingsPage() {
         taskNotifications: "Task notifications",
         taskNotificationsDescription:
           "Receive notifications about task updates.",
-        conversationNotifications: "Conversation notifications",
+        conversationNotifications:
+          "Conversation notifications",
         conversationNotificationsDescription:
           "Receive notifications about customer conversations.",
         security: "Security",
@@ -84,6 +106,45 @@ export default function SettingsPage() {
         manageTeam: "Manage team",
         inviteEmployee: "Invite employee",
         invitations: "Invitations & QR",
+
+        integrations: "Integrations",
+        integrationsDescription:
+          "Connect your company's communication channels to BusinessOS.",
+        connected: "Connected",
+        notConnected: "Not connected",
+        configure: "Configure",
+        whatsapp: "WhatsApp Business",
+        whatsappDescription:
+          "Connect your company's WhatsApp Business account and receive customer conversations inside BusinessOS.",
+        whatsappNote:
+          "Each company connects its own WhatsApp Business account.",
+        emailIntegration: "Business Email",
+        emailDescription:
+          "Connect your company's email channel and manage customer emails inside BusinessOS.",
+        emailNote:
+          "Email integration will use your company's own mailbox.",
+        integrationsOwnerOnly:
+          "Only the Company Owner can manage integrations.",
+
+        replyMode: "Employee Reply Mode",
+        replyModeDescription:
+          "Choose how BusinessOS handles customer replies for your company.",
+        manual: "Manual",
+        manualDescription:
+          "Employees reply to customers themselves.",
+        aiSuggest: "AI Suggest",
+        aiSuggestDescription:
+          "AI prepares a reply and the employee reviews and sends it.",
+        aiAuto: "AI Auto",
+        aiAutoDescription:
+          "AI automatically handles customer replies.",
+        hybrid: "Hybrid",
+        hybridDescription:
+          "AI handles normal cases and sends important cases to employees.",
+        saveReplyMode: "Save reply mode",
+        replyModeSaved: "Reply mode saved",
+        ownerOnlyReplyMode:
+          "Only the Company Owner can change the employee reply mode.",
       }
     : {
         title: "الإعدادات",
@@ -118,7 +179,8 @@ export default function SettingsPage() {
         taskNotifications: "إشعارات المهام",
         taskNotificationsDescription:
           "استقبال إشعارات عند تحديث المهام.",
-        conversationNotifications: "إشعارات المحادثات",
+        conversationNotifications:
+          "إشعارات المحادثات",
         conversationNotificationsDescription:
           "استقبال إشعارات حول محادثات العملاء.",
         security: "الأمان",
@@ -136,6 +198,45 @@ export default function SettingsPage() {
         manageTeam: "إدارة الفريق",
         inviteEmployee: "دعوة موظف",
         invitations: "الدعوات وQR",
+
+        integrations: "التكاملات",
+        integrationsDescription:
+          "اربط قنوات التواصل الخاصة بشركتك مع BusinessOS.",
+        connected: "متصل",
+        notConnected: "غير متصل",
+        configure: "إعداد",
+        whatsapp: "WhatsApp Business",
+        whatsappDescription:
+          "اربط حساب WhatsApp Business الخاص بشركتك واستقبل محادثات العملاء داخل BusinessOS.",
+        whatsappNote:
+          "كل شركة تربط حساب WhatsApp Business الخاص بها.",
+        emailIntegration: "بريد الشركة",
+        emailDescription:
+          "اربط بريد شركتك لإدارة رسائل العملاء من داخل BusinessOS.",
+        emailNote:
+          "تكامل البريد سيستخدم صندوق البريد الخاص بشركتك.",
+        integrationsOwnerOnly:
+          "فقط مالك الشركة يستطيع إدارة التكاملات.",
+
+        replyMode: "وضع رد الموظفين",
+        replyModeDescription:
+          "اختر الطريقة التي يتعامل بها BusinessOS مع ردود العملاء في شركتك.",
+        manual: "يدوي",
+        manualDescription:
+          "الموظفون يردون على العملاء بأنفسهم.",
+        aiSuggest: "اقتراح الذكاء الاصطناعي",
+        aiSuggestDescription:
+          "الذكاء الاصطناعي يجهز الرد والموظف يراجعه ثم يرسله.",
+        aiAuto: "الرد التلقائي بالذكاء الاصطناعي",
+        aiAutoDescription:
+          "الذكاء الاصطناعي يتعامل تلقائيًا مع ردود العملاء.",
+        hybrid: "هجين",
+        hybridDescription:
+          "الذكاء الاصطناعي يتعامل مع الحالات العادية ويحوّل الحالات المهمة للموظفين.",
+        saveReplyMode: "حفظ وضع الرد",
+        replyModeSaved: "تم حفظ وضع الرد",
+        ownerOnlyReplyMode:
+          "فقط مالك الشركة يستطيع تغيير وضع رد الموظفين.",
       };
 
   useEffect(() => {
@@ -152,12 +253,31 @@ export default function SettingsPage() {
 
       const { data: membership } = await supabase
         .from("company_members")
-        .select("role")
+        .select("company_id, role")
         .eq("user_id", user.id)
         .limit(1)
         .maybeSingle();
 
       setIsOwner(membership?.role === "owner");
+
+      if (membership?.company_id) {
+        setCompanyId(membership.company_id);
+
+        const { data: company } = await supabase
+          .from("companies")
+          .select("reply_mode")
+          .eq("id", membership.company_id)
+          .maybeSingle();
+
+        if (
+          company?.reply_mode === "manual" ||
+          company?.reply_mode === "ai_suggest" ||
+          company?.reply_mode === "ai_auto" ||
+          company?.reply_mode === "hybrid"
+        ) {
+          setReplyMode(company.reply_mode);
+        }
+      }
 
       const storedAi = localStorage.getItem(
         "businessos-ai-enabled"
@@ -198,6 +318,33 @@ export default function SettingsPage() {
 
     loadSettings();
   }, []);
+
+  async function saveReplyMode() {
+    if (!companyId || !isOwner) return;
+
+    setSavingReplyMode(true);
+    setReplyModeSaved(false);
+
+    const { error } = await supabase
+      .from("companies")
+      .update({
+        reply_mode: replyMode,
+      })
+      .eq("id", companyId);
+
+    setSavingReplyMode(false);
+
+    if (error) {
+      console.error("Failed to save reply mode:", error);
+      return;
+    }
+
+    setReplyModeSaved(true);
+
+    window.setTimeout(() => {
+      setReplyModeSaved(false);
+    }, 2500);
+  }
 
   function savePreferences() {
     localStorage.setItem(
@@ -324,101 +471,280 @@ export default function SettingsPage() {
             </section>
 
             {isOwner && (
+              <>
+                <section className="rounded-[20px] border border-neutral-100 bg-white p-5 shadow-[0_6px_25px_rgba(0,0,0,.03)] sm:p-6">
+                  <div className="mb-5 flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-white">
+                      <Users
+                        className="h-5 w-5"
+                        strokeWidth={1.8}
+                      />
+                    </div>
+
+                    <div>
+                      <h2 className="text-sm font-bold">
+                        {text.teamManagement}
+                      </h2>
+
+                      <p className="mt-1 text-[11px] text-neutral-400">
+                        {text.teamDescription}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Link
+                      href={`/${locale}/team`}
+                      className="group rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:border-black hover:bg-white"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white">
+                          <Users className="h-4 w-4" />
+                        </div>
+
+                        <ChevronRight
+                          className={`h-4 w-4 text-neutral-300 transition group-hover:text-black ${
+                            !isEnglish ? "rotate-180" : ""
+                          }`}
+                        />
+                      </div>
+
+                      <div className="mt-4 text-sm font-bold">
+                        {text.manageTeam}
+                      </div>
+
+                      <div className="mt-1 text-[10px] text-neutral-400">
+                        {text.teamDescription}
+                      </div>
+                    </Link>
+
+                    <Link
+                      href={`/${locale}/team`}
+                      className="group rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:border-black hover:bg-white"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100">
+                          <Mail className="h-4 w-4" />
+                        </div>
+
+                        <ChevronRight
+                          className={`h-4 w-4 text-neutral-300 transition group-hover:text-black ${
+                            !isEnglish ? "rotate-180" : ""
+                          }`}
+                        />
+                      </div>
+
+                      <div className="mt-4 text-sm font-bold">
+                        {text.inviteEmployee}
+                      </div>
+
+                      <div className="mt-1 text-[10px] text-neutral-400">
+                        {text.inviteEmployee}
+                      </div>
+                    </Link>
+
+                    <Link
+                      href={`/${locale}/team`}
+                      className="group rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:border-black hover:bg-white"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100">
+                          <QrCode className="h-4 w-4" />
+                        </div>
+
+                        <ChevronRight
+                          className={`h-4 w-4 text-neutral-300 transition group-hover:text-black ${
+                            !isEnglish ? "rotate-180" : ""
+                          }`}
+                        />
+                      </div>
+
+                      <div className="mt-4 text-sm font-bold">
+                        {text.invitations}
+                      </div>
+
+                      <div className="mt-1 text-[10px] text-neutral-400">
+                        {text.invitations}
+                      </div>
+                    </Link>
+                  </div>
+                </section>
+
+                {/* Employee Reply Mode */}
+                <section className="rounded-[20px] border border-neutral-100 bg-white p-5 shadow-[0_6px_25px_rgba(0,0,0,.03)] sm:p-6">
+                  <div className="mb-6 flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-white">
+                      <Bot
+                        className="h-5 w-5"
+                        strokeWidth={1.8}
+                      />
+                    </div>
+
+                    <div>
+                      <h2 className="text-sm font-bold">
+                        {text.replyMode}
+                      </h2>
+
+                      <p className="mt-1 text-[11px] leading-5 text-neutral-400">
+                        {text.replyModeDescription}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <ReplyModeCard
+                      icon={
+                        <UserRound className="h-4 w-4" />
+                      }
+                      title={text.manual}
+                      description={text.manualDescription}
+                      selected={replyMode === "manual"}
+                      onClick={() =>
+                        setReplyMode("manual")
+                      }
+                    />
+
+                    <ReplyModeCard
+                      icon={<Sparkles className="h-4 w-4" />}
+                      title={text.aiSuggest}
+                      description={text.aiSuggestDescription}
+                      selected={
+                        replyMode === "ai_suggest"
+                      }
+                      onClick={() =>
+                        setReplyMode("ai_suggest")
+                      }
+                    />
+
+                    <ReplyModeCard
+                      icon={<Zap className="h-4 w-4" />}
+                      title={text.aiAuto}
+                      description={text.aiAutoDescription}
+                      selected={replyMode === "ai_auto"}
+                      onClick={() =>
+                        setReplyMode("ai_auto")
+                      }
+                    />
+
+                    <ReplyModeCard
+                      icon={<GitMerge className="h-4 w-4" />}
+                      title={text.hybrid}
+                      description={text.hybridDescription}
+                      selected={replyMode === "hybrid"}
+                      onClick={() =>
+                        setReplyMode("hybrid")
+                      }
+                    />
+                  </div>
+
+                  <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-[10px] text-neutral-400">
+                      {replyModeSaved
+                        ? text.replyModeSaved
+                        : text.ownerOnlyReplyMode}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={saveReplyMode}
+                      disabled={savingReplyMode}
+                      className="flex h-11 items-center justify-center gap-2 rounded-xl bg-black px-5 text-xs font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {replyModeSaved ? (
+                        <Check className="h-4 w-4" />
+                      ) : savingReplyMode ? (
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      ) : (
+                        <Save className="h-4 w-4" />
+                      )}
+
+                      {replyModeSaved
+                        ? text.replyModeSaved
+                        : text.saveReplyMode}
+                    </button>
+                  </div>
+                </section>
+
+                {/* Integrations */}
+                <section className="rounded-[20px] border border-neutral-100 bg-white p-5 shadow-[0_6px_25px_rgba(0,0,0,.03)] sm:p-6">
+                  <div className="mb-6 flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-white">
+                      <Plug
+                        className="h-5 w-5"
+                        strokeWidth={1.8}
+                      />
+                    </div>
+
+                    <div>
+                      <h2 className="text-sm font-bold">
+                        {text.integrations}
+                      </h2>
+
+                      <p className="mt-1 text-[11px] text-neutral-400">
+                        {text.integrationsDescription}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <IntegrationCard
+                      icon={
+                        <MessageCircle
+                          className="h-5 w-5"
+                          strokeWidth={1.8}
+                        />
+                      }
+                      title={text.whatsapp}
+                      description={text.whatsappDescription}
+                      note={text.whatsappNote}
+                      status={text.notConnected}
+                      buttonText={text.configure}
+                      isEnglish={isEnglish}
+                    />
+
+                    <IntegrationCard
+                      icon={
+                        <Mail
+                          className="h-5 w-5"
+                          strokeWidth={1.8}
+                        />
+                      }
+                      title={text.emailIntegration}
+                      description={text.emailDescription}
+                      note={text.emailNote}
+                      status={text.notConnected}
+                      buttonText={text.configure}
+                      isEnglish={isEnglish}
+                    />
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-2 rounded-2xl border border-neutral-100 bg-[#fafafa] px-4 py-3 text-[10px] text-neutral-400">
+                    <Plug className="h-3.5 w-3.5 shrink-0" />
+                    <span>{text.integrationsOwnerOnly}</span>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {!isOwner && (
               <section className="rounded-[20px] border border-neutral-100 bg-white p-5 shadow-[0_6px_25px_rgba(0,0,0,.03)] sm:p-6">
-                <div className="mb-5 flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-white">
-                    <Users
-                      className="h-5 w-5"
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-100">
+                    <Plug
+                      className="h-5 w-5 text-neutral-700"
                       strokeWidth={1.8}
                     />
                   </div>
 
                   <div>
                     <h2 className="text-sm font-bold">
-                      {text.teamManagement}
+                      {text.integrations}
                     </h2>
 
                     <p className="mt-1 text-[11px] text-neutral-400">
-                      {text.teamDescription}
+                      {text.integrationsOwnerOnly}
                     </p>
                   </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <Link
-                    href={`/${locale}/team`}
-                    className="group rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:border-black hover:bg-white"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white">
-                        <Users className="h-4 w-4" />
-                      </div>
-
-                      <ChevronRight
-                        className={`h-4 w-4 text-neutral-300 transition group-hover:text-black ${
-                          !isEnglish ? "rotate-180" : ""
-                        }`}
-                      />
-                    </div>
-
-                    <div className="mt-4 text-sm font-bold">
-                      {text.manageTeam}
-                    </div>
-
-                    <div className="mt-1 text-[10px] text-neutral-400">
-                      {text.teamDescription}
-                    </div>
-                  </Link>
-
-                  <Link
-                    href={`/${locale}/team`}
-                    className="group rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:border-black hover:bg-white"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100">
-                        <Mail className="h-4 w-4" />
-                      </div>
-
-                      <ChevronRight
-                        className={`h-4 w-4 text-neutral-300 transition group-hover:text-black ${
-                          !isEnglish ? "rotate-180" : ""
-                        }`}
-                      />
-                    </div>
-
-                    <div className="mt-4 text-sm font-bold">
-                      {text.inviteEmployee}
-                    </div>
-
-                    <div className="mt-1 text-[10px] text-neutral-400">
-                      {text.inviteEmployee}
-                    </div>
-                  </Link>
-
-                  <Link
-                    href={`/${locale}/team`}
-                    className="group rounded-2xl border border-neutral-100 bg-[#fafafa] p-4 transition hover:border-black hover:bg-white"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-100">
-                        <QrCode className="h-4 w-4" />
-                      </div>
-
-                      <ChevronRight
-                        className={`h-4 w-4 text-neutral-300 transition group-hover:text-black ${
-                          !isEnglish ? "rotate-180" : ""
-                        }`}
-                      />
-                    </div>
-
-                    <div className="mt-4 text-sm font-bold">
-                      {text.invitations}
-                    </div>
-
-                    <div className="mt-1 text-[10px] text-neutral-400">
-                      {text.invitations}
-                    </div>
-                  </Link>
                 </div>
               </section>
             )}
@@ -637,6 +963,7 @@ export default function SettingsPage() {
                     onChange={() =>
                       setTaskNotifications(!taskNotifications)
                     }
+                    isEnglish={isEnglish}
                   />
 
                   <ToggleRow
@@ -650,6 +977,7 @@ export default function SettingsPage() {
                         !conversationNotifications
                       )
                     }
+                    isEnglish={isEnglish}
                   />
                 </div>
               </div>
@@ -747,16 +1075,155 @@ export default function SettingsPage() {
   );
 }
 
+function ReplyModeCard({
+  icon,
+  title,
+  description,
+  selected,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group rounded-2xl border p-4 text-right transition ${
+        selected
+          ? "border-black bg-black text-white"
+          : "border-neutral-100 bg-[#fafafa] text-[#111] hover:border-neutral-300 hover:bg-white"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+            selected
+              ? "bg-white text-black"
+              : "bg-neutral-100 text-black"
+          }`}
+        >
+          {icon}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs font-bold">
+              {title}
+            </div>
+
+            <div
+              className={`h-4 w-4 rounded-full border-2 ${
+                selected
+                  ? "border-white bg-white"
+                  : "border-neutral-300 bg-transparent"
+              }`}
+            >
+              {selected && (
+                <div className="m-[2px] h-2 w-2 rounded-full bg-black" />
+              )}
+            </div>
+          </div>
+
+          <div
+            className={`mt-2 text-[10px] leading-5 ${
+              selected
+                ? "text-neutral-300"
+                : "text-neutral-400"
+            }`}
+          >
+            {description}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function IntegrationCard({
+  icon,
+  title,
+  description,
+  note,
+  status,
+  buttonText,
+  isEnglish,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  note: string;
+  status: string;
+  buttonText: string;
+  isEnglish: boolean;
+}) {
+  return (
+    <div className="rounded-[20px] border border-neutral-100 bg-[#fafafa] p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black text-white">
+            {icon}
+          </div>
+
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold">
+              {title}
+            </h3>
+
+            <div className="mt-2 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-neutral-300" />
+
+              <span className="text-[10px] font-medium text-neutral-400">
+                {status}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <span className="shrink-0 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-neutral-500">
+          {buttonText}
+        </span>
+      </div>
+
+      <p
+        className={`mt-4 text-[11px] leading-6 text-neutral-500 ${
+          isEnglish ? "text-left" : "text-right"
+        }`}
+      >
+        {description}
+      </p>
+
+      <div className="mt-4 rounded-xl border border-neutral-100 bg-white px-3 py-2.5 text-[10px] leading-5 text-neutral-400">
+        {note}
+      </div>
+
+      <button
+        type="button"
+        disabled
+        className="mt-4 flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-black text-xs font-semibold text-white opacity-40"
+      >
+        <Plug className="h-3.5 w-3.5" />
+        {buttonText}
+      </button>
+    </div>
+  );
+}
+
 function ToggleRow({
   label,
   description,
   checked,
   onChange,
+  isEnglish,
 }: {
   label: string;
   description: string;
   checked: boolean;
   onChange: () => void;
+  isEnglish: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#fafafa] px-4 py-3">
@@ -779,7 +1246,13 @@ function ToggleRow({
       >
         <span
           className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${
-            checked ? "right-0.5" : "left-0.5"
+            checked
+              ? isEnglish
+                ? "right-0.5"
+                : "left-0.5"
+              : isEnglish
+              ? "left-0.5"
+              : "right-0.5"
           }`}
         />
       </button>

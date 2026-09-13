@@ -11,6 +11,8 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser();
 
+    console.log("[ADVANCED AI] USER", user?.id);
+
     if (!user) {
       return NextResponse.json(
         { error: "يجب تسجيل الدخول لاستخدام Advanced AI." },
@@ -32,6 +34,8 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log("[ADVANCED AI] MEMBERSHIP", JSON.stringify(membership));
+
     const companyId = membership.company_id;
 
     const { data: subscription, error: subscriptionError } =
@@ -41,6 +45,8 @@ export async function POST(req: Request) {
         .eq("company_id", companyId)
         .eq("status", "active")
         .maybeSingle();
+
+    console.log("[ADVANCED AI] SUBSCRIPTION", JSON.stringify(subscription), subscriptionError);
 
     if (subscriptionError || !subscription) {
       return NextResponse.json(
@@ -72,6 +78,10 @@ export async function POST(req: Request) {
         { status: 403 }
       );
     }
+
+    console.log("[ADVANCED AI PLAN]", JSON.stringify(plan.name), hasFeature(plan.name, "advanced_ai"));
+
+    console.log("[ADVANCED AI PLAN]", JSON.stringify(plan.name), hasFeature(plan.name, "advanced_ai"));
 
     if (!hasFeature(plan.name, "advanced_ai")) {
       return NextResponse.json(
@@ -446,3 +456,12 @@ ${conversationText}`,
     );
   }
 }
+
+
+
+
+
+
+
+
+

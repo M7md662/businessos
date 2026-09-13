@@ -48,22 +48,22 @@ const defaultMessages: Message[] = [
     id: 1,
     role: "assistant",
     content:
-      "Ù…Ø±Ø­Ø¨Ù‹Ø§ ðŸ‘‹ Ø£Ù†Ø§ Ù…Ø³Ø§Ø¹Ø¯ BusinessOS Ø§Ù„Ø°ÙƒÙŠ. Ø§ÙƒØªØ¨ Ø³Ø¤Ø§Ù„Ùƒ ÙˆØ³Ø£Ø³Ø§Ø¹Ø¯Ùƒ.",
+      "مرحبًا 👋 أنا مساعد BusinessOS الذكي. اكتب سؤالك وسأساعدك.",
   },
 ];
 
 const defaultKnowledge: KnowledgeData = {
-  companyName: "Ø´Ø±ÙƒØªÙŠ",
+  companyName: "شركتي",
   businessInfo:
-    "Ø´Ø±ÙƒØ© ØªÙ‚Ø¯Ù… Ø®Ø¯Ù…Ø§Øª Ø±Ù‚Ù…ÙŠØ© ÙˆØ­Ù„ÙˆÙ„ ØªÙ‚Ù†ÙŠØ© Ù„Ù„Ø¹Ù…Ù„Ø§Ø¡.",
+    "شركة تقدم خدمات رقمية وحلول تقنية للعملاء.",
   services:
-    "ØªØµÙ…ÙŠÙ… Ø§Ù„Ù…ÙˆØ§Ù‚Ø¹ Ø§Ù„Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠØ©\nØªØ·ÙˆÙŠØ± Ø§Ù„Ø£Ù†Ø¸Ù…Ø©\nØ§Ù„Ø§Ø³ØªØ´Ø§Ø±Ø§Øª Ø§Ù„ØªÙ‚Ù†ÙŠØ©",
+    "تصميم المواقع الإلكترونية\nتطوير الأنظمة\nالاستشارات التقنية",
   pricing:
-    "ØªØµÙ…ÙŠÙ… Ø§Ù„Ù…ÙˆØ§Ù‚Ø¹ ÙŠØ¨Ø¯Ø£ Ù…Ù† 2500 Ø¬Ù†ÙŠÙ‡.\nØ§Ù„Ø§Ø³ØªØ´Ø§Ø±Ø§Øª ØªØ¨Ø¯Ø£ Ù…Ù† 500 Ø¬Ù†ÙŠÙ‡.",
+    "تصميم المواقع يبدأ من 2500 جنيه.\nالاستشارات تبدأ من 500 جنيه.",
   policies:
-    "ÙŠØªÙ… ØªØ­Ø¯ÙŠØ¯ Ù…Ø¯Ø© Ø§Ù„ØªÙ†ÙÙŠØ° Ø­Ø³Ø¨ Ù†ÙˆØ¹ Ø§Ù„Ù…Ø´Ø±ÙˆØ¹.\nÙŠØªÙ… Ø§Ù„Ø§ØªÙØ§Ù‚ Ø¹Ù„Ù‰ Ø§Ù„ØªÙØ§ØµÙŠÙ„ Ù‚Ø¨Ù„ Ø¨Ø¯Ø¡ Ø§Ù„Ø¹Ù…Ù„.",
+    "يتم تحديد مدة التنفيذ حسب نوع المشروع.\nيتم الاتفاق على التفاصيل قبل بدء العمل.",
   faq:
-    "Ø³: ÙƒÙ… ØªØ³ØªØºØ±Ù‚ Ø§Ù„Ø®Ø¯Ù…Ø©ØŸ\nØ¬: ØªØ®ØªÙ„Ù Ø§Ù„Ù…Ø¯Ø© Ø­Ø³Ø¨ Ù†ÙˆØ¹ Ø§Ù„Ø®Ø¯Ù…Ø© ÙˆØ­Ø¬Ù… Ø§Ù„Ù…Ø´Ø±ÙˆØ¹.\n\nØ³: Ù‡Ù„ ÙŠÙ…ÙƒÙ† Ø·Ù„Ø¨ ØªØ¹Ø¯ÙŠÙ„Ø§ØªØŸ\nØ¬: Ù†Ø¹Ù…ØŒ ÙŠÙ…ÙƒÙ† Ø·Ù„Ø¨ Ø§Ù„ØªØ¹Ø¯ÙŠÙ„Ø§Øª Ø­Ø³Ø¨ Ø§Ù„Ø§ØªÙØ§Ù‚.",
+    "س: كم تستغرق الخدمة\nج: تختلف المدة حسب نوع الخدمة وحجم المشروع.\n\nس: هل يمكن طلب تعديلات\nج: نعم يمكن طلب التعديلات حسب الاتفاق.",
 };
 
 export default function AIPage() {
@@ -109,39 +109,39 @@ export default function AIPage() {
         powered: "Powered by your business knowledge",
       }
     : {
-        loading: "Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯...",
-        accessTitle: "Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø°ÙƒÙŠ",
+        loading: "جاري التحقق من صلاحية المساعد...",
+        accessTitle: "المساعد الذكي",
         accessDescription:
-          "Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø°ÙƒÙŠ Ù…ØªØ§Ø­ ÙÙŠ Ø®Ø·ØªÙŠ Pro ÙˆEnterprise.",
+          "المساعد الذكي متاح في خطتي Pro وEnterprise.",
         accessHint:
-          "ØªØ­ØªØ§Ø¬ Ø¥Ù„Ù‰ ØªØ±Ù‚ÙŠØ© Ø®Ø·ØªÙƒ Ù„Ø§Ø³ØªØ®Ø¯Ø§Ù… Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø°ÙƒÙŠ Ø¯Ø§Ø®Ù„ BusinessOS.",
-        currentPlan: "Ø®Ø·ØªÙƒ Ø§Ù„Ø­Ø§Ù„ÙŠØ©",
-        errorTitle: "ØªØ¹Ø°Ø± ØªØ­Ù…ÙŠÙ„ Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø°ÙƒÙŠ",
+          "تحتاج إلى ترقية خطتك لاستخدام المساعد الذكي داخل BusinessOS.",
+        currentPlan: "خطتك الحالية",
+        errorTitle: "تعذر تحميل المساعد الذكي",
         errorDescription:
-          "Ø­Ø¯Ø«Øª Ù…Ø´ÙƒÙ„Ø© Ø£Ø«Ù†Ø§Ø¡ Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† Ø­Ø³Ø§Ø¨Ùƒ Ø£Ùˆ Ø§Ø´ØªØ±Ø§ÙƒÙƒ.",
-        title: "Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ø§Ù„Ø°ÙƒÙŠ",
-        subtitle: "Ù…Ø³Ø§Ø¹Ø¯Ùƒ Ø§Ù„Ø°ÙƒÙŠ Ø¯Ø§Ø®Ù„ BusinessOS",
-        clear: "Ù…Ø³Ø­ Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø©",
-        clearConfirm: "Ù‡Ù„ ØªØ±ÙŠØ¯ Ø­Ø°Ù Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø©ØŸ",
-        connected: "Ù…ØªØµÙ„",
+          "حدثت مشكلة أثناء التحقق من حسابك أو اشتراكك.",
+        title: "المساعد الذكي",
+        subtitle: "مساعدك الذكي داخل BusinessOS",
+        clear: "مسح المحادثة",
+        clearConfirm: "هل تريد حذف المحادثة",
+        connected: "متصل",
         connectedTitle: "BusinessOS AI",
         connectedDescription:
-          "Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ Ù…ØªØµÙ„ Ø§Ù„Ø¢Ù† Ø¨Ù‚Ø§Ø¹Ø¯Ø© Ù…Ø¹Ø±ÙØ© Ø´Ø±ÙƒØªÙƒ ÙˆÙˆØ§Ø¬Ù‡Ø© Ø§Ù„Ø°ÙƒØ§Ø¡ Ø§Ù„Ø§ØµØ·Ù†Ø§Ø¹ÙŠ.",
-        knowledgeConnected: "Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ù…Ø¹Ø±ÙØ© Ù…ØªØµÙ„Ø©",
-        smartResponses: "Ø±Ø¯ÙˆØ¯ Ø°ÙƒÙŠØ©",
-        ready: "Ø¬Ø§Ù‡Ø²",
-        you: "Ø£Ù†Øª",
+          "المساعد متصل الآن بقاعدة معرفة شركتك وواجهة الذكاء الاصطناعي.",
+        knowledgeConnected: "قاعدة المعرفة متصلة",
+        smartResponses: "ردود ذكية",
+        ready: "جاهز",
+        you: "أنت",
         assistant: "BusinessOS AI",
-        typing: "Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯ ÙŠÙÙƒØ±...",
-        placeholder: "Ø§ÙƒØªØ¨ Ø³Ø¤Ø§Ù„Ùƒ Ù‡Ù†Ø§...",
-        sending: "Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø¥Ø±Ø³Ø§Ù„...",
-        send: "Ø¥Ø±Ø³Ø§Ù„",
-        enterHint: "Ø§Ø¶ØºØ· Enter Ù„Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„Ø±Ø³Ø§Ù„Ø©",
-        reset: "Ø¥Ø¹Ø§Ø¯Ø© Ø¶Ø¨Ø·",
-        conversation: "Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø©",
-        messages: "Ø±Ø³Ø§Ø¦Ù„",
+        typing: "المساعد يفكر...",
+        placeholder: "اكتب سؤالك هنا...",
+        sending: "جاري الإرسال...",
+        send: "إرسال",
+        enterHint: "اضغط Enter لإرسال الرسالة",
+        reset: "إعادة ضبط",
+        conversation: "المحادثة",
+        messages: "رسائل",
         secure: "BusinessOS AI",
-        powered: "Ù…Ø¯Ø¹ÙˆÙ… Ø¨Ù‚Ø§Ø¹Ø¯Ø© Ù…Ø¹Ø±ÙØ© Ø´Ø±ÙƒØªÙƒ",
+        powered: "مدعوم بقاعدة معرفة شركتك",
       };
 
   const [messages, setMessages] =
@@ -385,7 +385,7 @@ export default function AIPage() {
           data.reply ||
           (isEnglish
             ? "No response was received."
-            : "Ù„Ù… ÙŠØµÙ„ Ø±Ø¯ Ù…Ù† Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯."),
+            : "لم يصل رد من المساعد."),
       };
 
       setMessages((current) => [
@@ -400,7 +400,7 @@ export default function AIPage() {
         role: "assistant",
         content: isEnglish
           ? "An error occurred while connecting to the assistant. Make sure the server is running."
-          : "Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø§Ù„Ø§ØªØµØ§Ù„ Ø¨Ø§Ù„Ù…Ø³Ø§Ø¹Ø¯. ØªØ£ÙƒØ¯ Ù…Ù† Ø£Ù† Ø§Ù„Ø®Ø§Ø¯Ù… ÙŠØ¹Ù…Ù„.",
+          : "حدث خطأ أثناء الاتصال بالمساعد. تأكد من أن الخادم يعمل.",
       };
 
       setMessages((current) => [
@@ -425,7 +425,7 @@ export default function AIPage() {
       {
         ...defaultMessages[0],
         content: isEnglish
-          ? "Hello ðŸ‘‹ I am the BusinessOS AI assistant. Ask me anything and I will help you."
+          ? "Hello 👋 I am the BusinessOS AI assistant. Ask me anything and I will help you."
           : defaultMessages[0].content,
       },
     ]);
@@ -658,7 +658,7 @@ export default function AIPage() {
                       >
                         {message.role === "user" ? (
                           <span className="text-[10px] font-bold">
-                            {isEnglish ? "Y" : "Ø£"}
+                            {isEnglish ? "Y" : "أ"}
                           </span>
                         ) : (
                           <Bot className="h-4 w-4" />
@@ -799,5 +799,3 @@ function StatusItem({
     </div>
   );
 }
-
-
