@@ -5,6 +5,8 @@ import { useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
+type RegistrationMode = "owner" | "employee" | "";
+
 export default function RegisterPage() {
   const router = useRouter();
   const locale = useLocale();
@@ -16,6 +18,9 @@ export default function RegisterPage() {
   const [businessType, setBusinessType] = useState("");
   const [password, setPassword] = useState("");
 
+  const [registrationMode, setRegistrationMode] =
+    useState<RegistrationMode>("");
+
   const [inviteToken, setInviteToken] = useState("");
   const [isInviteRegistration, setIsInviteRegistration] =
     useState(false);
@@ -25,15 +30,13 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    const params = new URLSearchParams(
-      window.location.search
-    );
-
+    const params = new URLSearchParams(window.location.search);
     const token = params.get("invite") || "";
 
     if (token) {
       setInviteToken(token);
       setIsInviteRegistration(true);
+      setRegistrationMode("employee");
     }
   }, []);
 
@@ -69,60 +72,47 @@ export default function RegisterPage() {
   ];
 
   async function createCompanyForUser(
-    userId: string,
+    _userId: string,
     workspaceName: string,
     selectedBusinessType: string
   ) {
-    const companyId = crypto.randomUUID();
-
-    const { error: companyError } = await supabase
-      .from("companies")
-      .insert({
-        id: companyId,
-        name: workspaceName,
+    const { data, error } = await supabase.rpc(
+      "create_company_with_owner",
+      {
+        company_name: workspaceName.trim(),
         business_type: selectedBusinessType,
-      });
+      }
+    );
 
-    if (companyError) {
+    if (error) {
       console.error(
-        "Company creation error:",
-        companyError
+        "Company creation RPC error:",
+        error
       );
 
       throw new Error(
-        companyError.message ||
+        error.message ||
           (isEnglish
             ? "Unable to create the company"
             : "تعذر إنشاء الشركة")
       );
     }
 
-    const { error: memberError } = await supabase
-      .from("company_members")
-      .insert({
-        company_id: companyId,
-        user_id: userId,
-        role: "owner",
-      });
-
-    if (memberError) {
+    if (!data?.success) {
       console.error(
-        "Company member error:",
-        memberError
+        "Company creation failed:",
+        data
       );
 
       throw new Error(
-        memberError.message ||
-          (isEnglish
-            ? "Unable to link the user to the company"
-            : "تعذر ربط المستخدم بالشركة")
+        isEnglish
+          ? "Unable to create the company"
+          : "تعذر إنشاء الشركة"
       );
     }
   }
 
-  async function acceptInvitation(
-    token: string
-  ) {
+  async function acceptInvitation(token: string) {
     const { data, error: acceptError } =
       await supabase.rpc(
         "accept_company_invitation",
@@ -140,29 +130,58 @@ export default function RegisterPage() {
       throw new Error(
         isEnglish
           ? "Account created, but the invitation could not be accepted."
-          : "تم إنشاء الحساب، لكن تعذر قبول الدعوة."
+          : "تم إنشاء الحساب لكن تعذر قبول الدعوة."
       );
     }
 
     if (!data?.success) {
-      const message =
-        data?.error === "expired"
-          ? isEnglish
+      const invitationError = data?.error;
+
+      if (invitationError === "expired") {
+        throw new Error(
+          isEnglish
             ? "This invitation has expired."
             : "انتهت صلاحية الدعوة."
-          : data?.error === "already_used"
-            ? isEnglish
-              ? "This invitation has already been used."
-              : "تم استخدام هذه الدعوة بالفعل."
-            : data?.error === "invalid_invitation"
-              ? isEnglish
-                ? "This invitation is invalid."
-                : "هذه الدعوة غير صالحة."
-              : isEnglish
-                ? "Unable to accept the invitation."
-                : "تعذر قبول الدعوة.";
+        );
+      }
 
-      throw new Error(message);
+      if (invitationError === "already_used") {
+        throw new Error(
+          isEnglish
+            ? "This invitation has already been used."
+            : "تم استخدام هذه الدعوة بالفعل."
+        );
+      }
+
+      if (invitationError === "invalid_invitation") {
+        throw new Error(
+          isEnglish
+            ? "This invitation is invalid."
+            : "هذه الدعوة غير صالحة."
+        );
+      }
+
+      if (invitationError === "email_mismatch") {
+        throw new Error(
+          isEnglish
+            ? "This invitation was sent to a different email address. Please use the email address that received the invitation."
+            : "هذه الدعوة موجهة إلى بريد إلكتروني مختلف. استخدم البريد الإلكتروني الذي استلم الدعوة."
+        );
+      }
+
+      if (invitationError === "not_authenticated") {
+        throw new Error(
+          isEnglish
+            ? "Please sign in before accepting this invitation."
+            : "يرجى تسجيل الدخول قبل قبول هذه الدعوة."
+        );
+      }
+
+      throw new Error(
+        isEnglish
+          ? "Unable to accept the invitation."
+          : "تعذر قبول الدعوة."
+      );
     }
   }
 
@@ -173,6 +192,24 @@ export default function RegisterPage() {
 
     setError("");
     setSuccess("");
+
+    if (!registrationMode) {
+      setError(
+        isEnglish
+          ? "Choose how you want to use BusinessOS."
+          : "اختر أولًا كيف تريد استخدام BusinessOS."
+      );
+      return;
+    }
+
+    if (registrationMode === "employee" && !isInviteRegistration) {
+      setError(
+        isEnglish
+          ? "Employees must join a company through an invitation link."
+          : "الموظفون يجب أن ينضموا إلى الشركة من خلال رابط دعوة."
+      );
+      return;
+    }
 
     if (!name.trim()) {
       setError(
@@ -190,7 +227,10 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!isInviteRegistration && !companyName.trim()) {
+    if (
+      registrationMode === "owner" &&
+      !companyName.trim()
+    ) {
       setError(
         isEnglish
           ? "Enter your company name"
@@ -199,7 +239,10 @@ export default function RegisterPage() {
       return;
     }
 
-    if (!isInviteRegistration && !businessType) {
+    if (
+      registrationMode === "owner" &&
+      !businessType
+    ) {
       setError(
         isEnglish
           ? "Select your business type"
@@ -275,12 +318,6 @@ export default function RegisterPage() {
         );
       }
 
-      /*
-       * Employee invitation registration
-       *
-       * The employee must join the existing company.
-       * We do NOT create a new company here.
-       */
       if (isInviteRegistration) {
         if (!data.session) {
           setSuccess(
@@ -316,12 +353,6 @@ export default function RegisterPage() {
         return;
       }
 
-      /*
-       * Normal registration
-       *
-       * This creates a new company and makes
-       * the first user the Company Owner.
-       */
       if (!data.session) {
         setSuccess(
           isEnglish
@@ -365,6 +396,18 @@ export default function RegisterPage() {
     }
   }
 
+  function selectRegistrationMode(
+    mode: RegistrationMode
+  ) {
+    if (loading || isInviteRegistration) {
+      return;
+    }
+
+    setRegistrationMode(mode);
+    setError("");
+    setSuccess("");
+  }
+
   return (
     <main
       dir={isEnglish ? "ltr" : "rtl"}
@@ -382,9 +425,17 @@ export default function RegisterPage() {
                 ? isEnglish
                   ? "Join Company"
                   : "الانضمام إلى الشركة"
-                : isEnglish
-                  ? "Create Account"
-                  : "إنشاء حساب"}
+                : registrationMode === "employee"
+                  ? isEnglish
+                    ? "Join as Employee"
+                    : "الانضمام كموظف"
+                  : registrationMode === "owner"
+                    ? isEnglish
+                      ? "Create Your Business"
+                      : "إنشاء مساحة عملك"
+                    : isEnglish
+                      ? "Create Account"
+                      : "إنشاء حساب"}
             </h1>
 
             <p className="mt-2 text-sm text-slate-500">
@@ -392,14 +443,22 @@ export default function RegisterPage() {
                 ? isEnglish
                   ? "Create your account to join the invited company"
                   : "أنشئ حسابك للانضمام إلى الشركة التي تمت دعوتك إليها"
-                : isEnglish
-                  ? "Start managing your business with BusinessOS"
-                  : "ابدأ إدارة أعمالك مع BusinessOS"}
+                : !registrationMode
+                  ? isEnglish
+                    ? "Choose how you want to use BusinessOS"
+                    : "اختر كيف تريد استخدام BusinessOS"
+                  : registrationMode === "employee"
+                    ? isEnglish
+                      ? "Join your company using an invitation"
+                      : "انضم إلى شركتك باستخدام دعوة"
+                    : isEnglish
+                      ? "Create and manage your business with BusinessOS"
+                      : "أنشئ وأدر أعمالك باستخدام BusinessOS"}
             </p>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl sm:p-8">
-            {isInviteRegistration && (
+            {isInviteRegistration ? (
               <div className="mb-5 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-center">
                 <p className="text-sm font-bold text-slate-900">
                   {isEnglish
@@ -413,76 +472,120 @@ export default function RegisterPage() {
                     : "لا تحتاج إلى إنشاء شركة أو اختيار نوع نشاط."}
                 </p>
               </div>
-            )}
-
-            <form
-              onSubmit={handleRegister}
-              className="space-y-5"
-            >
-              <div>
-                <label className="mb-2 block text-sm font-bold text-slate-700">
-                  {isEnglish ? "Name" : "الاسم"}
-                </label>
-
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) =>
-                    setName(e.target.value)
+            ) : !registrationMode ? (
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() =>
+                    selectRegistrationMode("owner")
                   }
-                  placeholder={
-                    isEnglish
-                      ? "Mohammed Emad"
-                      : "محمد عماد"
+                  className="group w-full rounded-2xl border border-slate-200 bg-white p-5 text-right transition hover:border-slate-400 hover:shadow-md"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-xl text-white">
+                      🏢
+                    </div>
+
+                    <div className="flex-1">
+                      <p className="font-black text-slate-950">
+                        {isEnglish
+                          ? "Company / Business Owner"
+                          : "صاحب شركة / مؤسسة"}
+                      </p>
+
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        {isEnglish
+                          ? "Create a workspace and manage your team and business."
+                          : "أنشئ مساحة عمل وأدر فريقك وأعمالك."}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    selectRegistrationMode("employee")
                   }
-                  disabled={loading}
-                  autoComplete="name"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
-                />
+                  className="group w-full rounded-2xl border border-slate-200 bg-white p-5 text-right transition hover:border-slate-400 hover:shadow-md"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xl text-slate-950">
+                      👤
+                    </div>
+
+                    <div className="flex-1">
+                      <p className="font-black text-slate-950">
+                        {isEnglish
+                          ? "Employee"
+                          : "موظف"}
+                      </p>
+
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        {isEnglish
+                          ? "Join an existing company using an invitation."
+                          : "انضم إلى شركة موجودة من خلال دعوة."}
+                      </p>
+                    </div>
+                  </div>
+                </button>
               </div>
+            ) : registrationMode === "employee" &&
+              !isInviteRegistration ? (
+              <div className="text-center">
+                <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-2xl">
+                  👤
+                </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-bold text-slate-700">
+                <h2 className="text-xl font-black text-slate-950">
                   {isEnglish
-                    ? "Email Address"
-                    : "البريد الإلكتروني"}
-                </label>
+                    ? "You need a company invitation"
+                    : "تحتاج إلى دعوة من الشركة"}
+                </h2>
 
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) =>
-                    setEmail(e.target.value)
-                  }
-                  placeholder="you@example.com"
-                  disabled={loading}
-                  autoComplete="email"
-                  dir="ltr"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
-                />
+                <p className="mt-3 text-sm leading-7 text-slate-500">
+                  {isEnglish
+                    ? "Employees can only join a company through an invitation link sent by the company owner or manager."
+                    : "يمكن للموظفين الانضمام إلى الشركة فقط من خلال رابط دعوة يرسله مالك الشركة أو المدير."}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegistrationMode("");
+                    setError("");
+                  }}
+                  className="mt-6 w-full rounded-xl border border-slate-200 px-4 py-3.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  {isEnglish
+                    ? "Choose another option"
+                    : "اختيار طريقة أخرى"}
+                </button>
               </div>
-
-              {!isInviteRegistration && (
-                <>
+            ) : (
+              <>
+                <form
+                  onSubmit={handleRegister}
+                  className="space-y-5"
+                >
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">
-                      {isEnglish
-                        ? "Company Name"
-                        : "اسم الشركة"}
+                      {isEnglish ? "Name" : "الاسم"}
                     </label>
 
                     <input
                       type="text"
-                      value={companyName}
+                      value={name}
                       onChange={(e) =>
-                        setCompanyName(e.target.value)
+                        setName(e.target.value)
                       }
                       placeholder={
                         isEnglish
-                          ? "BusinessOS Company"
-                          : "شركة BusinessOS"
+                          ? "Mohammed Emad"
+                          : "محمد عماد"
                       }
                       disabled={loading}
+                      autoComplete="name"
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
                     />
                   </div>
@@ -490,94 +593,167 @@ export default function RegisterPage() {
                   <div>
                     <label className="mb-2 block text-sm font-bold text-slate-700">
                       {isEnglish
-                        ? "Business Type"
-                        : "نوع النشاط"}
+                        ? "Email Address"
+                        : "البريد الإلكتروني"}
                     </label>
 
-                    <select
-                      value={businessType}
+                    <input
+                      type="email"
+                      value={email}
                       onChange={(e) =>
-                        setBusinessType(e.target.value)
+                        setEmail(e.target.value)
                       }
+                      placeholder="you@example.com"
                       disabled={loading}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
-                    >
-                      <option value="">
-                        {isEnglish
-                          ? "Select business type"
-                          : "اختر نوع النشاط"}
-                      </option>
-
-                      {businessTypes.map((type) => (
-                        <option
-                          key={type.value}
-                          value={type.value}
-                        >
-                          {type.label}
-                        </option>
-                      ))}
-                    </select>
+                      autoComplete="email"
+                      dir="ltr"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
+                    />
                   </div>
-                </>
-              )}
 
-              <div>
-                <label className="mb-2 block text-sm font-bold text-slate-700">
+                  {registrationMode === "owner" && (
+                    <>
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">
+                          {isEnglish
+                            ? "Company Name"
+                            : "اسم الشركة"}
+                        </label>
+
+                        <input
+                          type="text"
+                          value={companyName}
+                          onChange={(e) =>
+                            setCompanyName(
+                              e.target.value
+                            )
+                          }
+                          placeholder={
+                            isEnglish
+                              ? "BusinessOS Company"
+                              : "شركة BusinessOS"
+                          }
+                          disabled={loading}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-slate-700">
+                          {isEnglish
+                            ? "Business Type"
+                            : "نوع النشاط"}
+                        </label>
+
+                        <select
+                          value={businessType}
+                          onChange={(e) =>
+                            setBusinessType(
+                              e.target.value
+                            )
+                          }
+                          disabled={loading}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+                        >
+                          <option value="">
+                            {isEnglish
+                              ? "Select business type"
+                              : "اختر نوع النشاط"}
+                          </option>
+
+                          {businessTypes.map(
+                            (type) => (
+                              <option
+                                key={type.value}
+                                value={type.value}
+                              >
+                                {type.label}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-slate-700">
+                      {isEnglish
+                        ? "Password"
+                        : "كلمة المرور"}
+                    </label>
+
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) =>
+                        setPassword(
+                          e.target.value
+                        )
+                      }
+                      placeholder="••••••••"
+                      disabled={loading}
+                      autoComplete="new-password"
+                      dir="ltr"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
+                    />
+
+                    <p className="mt-2 text-xs text-slate-400">
+                      {isEnglish
+                        ? "Password must contain at least 6 characters"
+                        : "يجب أن تحتوي كلمة المرور على 6 أحرف على الأقل"}
+                    </p>
+                  </div>
+
+                  {error && (
+                    <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-600">
+                      {error}
+                    </div>
+                  )}
+
+                  {success && (
+                    <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium leading-6 text-emerald-600">
+                      {success}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full rounded-xl bg-slate-950 px-4 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading
+                      ? isEnglish
+                        ? "Creating account..."
+                        : "جاري إنشاء الحساب..."
+                      : isInviteRegistration
+                        ? isEnglish
+                          ? "Create Account & Join"
+                          : "إنشاء الحساب والانضمام"
+                        : isEnglish
+                          ? "Create Account"
+                          : "إنشاء الحساب"}
+                  </button>
+                </form>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isInviteRegistration) {
+                      setRegistrationMode("");
+                      setError("");
+                      setSuccess("");
+                    }
+                  }}
+                  disabled={loading || isInviteRegistration}
+                  className="mt-4 w-full text-center text-sm font-bold text-slate-500 hover:text-slate-950 disabled:cursor-default"
+                >
                   {isEnglish
-                    ? "Password"
-                    : "كلمة المرور"}
-                </label>
-
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) =>
-                    setPassword(e.target.value)
-                  }
-                  placeholder="••••••••"
-                  disabled={loading}
-                  autoComplete="new-password"
-                  dir="ltr"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
-                />
-
-                <p className="mt-2 text-xs text-slate-400">
-                  {isEnglish
-                    ? "Password must contain at least 6 characters"
-                    : "يجب أن تحتوي كلمة المرور على 6 أحرف على الأقل"}
-                </p>
-              </div>
-
-              {error && (
-                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium leading-6 text-red-600">
-                  {error}
-                </div>
-              )}
-
-              {success && (
-                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium leading-6 text-emerald-600">
-                  {success}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full rounded-xl bg-slate-950 px-4 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {loading
-                  ? isEnglish
-                    ? "Creating account..."
-                    : "جاري إنشاء الحساب..."
-                  : isInviteRegistration
-                    ? isEnglish
-                      ? "Create Account & Join"
-                      : "إنشاء الحساب والانضمام"
-                    : isEnglish
-                      ? "Create Account"
-                      : "إنشاء الحساب"}
-              </button>
-            </form>
+                    ? "← Change registration type"
+                    : "→ تغيير طريقة التسجيل"}
+                </button>
+              </>
+            )}
 
             <div className="mt-6 border-t border-slate-100 pt-6 text-center text-sm text-slate-500">
               {isEnglish

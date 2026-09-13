@@ -1,8 +1,5 @@
 ﻿import { NextResponse } from "next/server";
 import { Resend } from "resend";
-import { createClient } from "@supabase/supabase-js";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(request: Request) {
   try {
@@ -25,15 +22,20 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!process.env.RESEND_API_KEY) {
+    const apiKey = process.env.RESEND_API_KEY;
+
+    if (!apiKey) {
       return NextResponse.json(
         {
           success: false,
-          error: "RESEND_API_KEY غير موجود في إعدادات الخادم",
+          error:
+            "إرسال البريد الإلكتروني غير مفعل حاليًا. أضف RESEND_API_KEY بعد إعداد Resend.",
         },
-        { status: 500 }
+        { status: 503 }
       );
     }
+
+    const resend = new Resend(apiKey);
 
     const roleLabels: Record<string, string> = {
       owner: "مالك الشركة",
