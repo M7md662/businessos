@@ -1,16 +1,22 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
   Users,
   UserPlus,
-  UserCheck,
-  UserX,
   Trash2,
   X,
   Mail,
   Phone,
+  Search,
+  MessageSquare,
+  ShoppingBag,
+  CheckSquare,
+  ArrowLeft,
+  ArrowRight,
+  Clock,
+  Sparkles,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -19,7 +25,39 @@ type Customer = {
   name: string;
   phone: string | null;
   email: string | null;
-  status: "active" | "inactive";
+  notes?: string | null;
+  created_at?: string;
+};
+
+type Conversation = {
+  id: string;
+  channel: string;
+  status: string;
+  last_message: string | null;
+  last_message_at: string | null;
+  ai_summary: string | null;
+  ai_intent: string | null;
+  ai_priority: string | null;
+  ai_is_lead: boolean | null;
+};
+
+type Order = {
+  id: string;
+  total: number;
+  status: string;
+  service: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+type Task = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  created_at: string;
 };
 
 export default function CustomersPage() {
@@ -28,8 +66,18 @@ export default function CustomersPage() {
   const isEnglish = locale === "en";
 
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomer, setSelectedCustomer] =
+    useState<Customer | null>(null);
+
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+
   const [isLoaded, setIsLoaded] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+
+  const [search, setSearch] = useState("");
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -78,7 +126,7 @@ export default function CustomersPage() {
 
       const { data, error: customersError } = await supabase
         .from("customers")
-        .select("id, name, phone, email, created_at")
+        .select("id, name, phone, email, notes, created_at")
         .eq("company_id", membership.company_id)
         .order("created_at", { ascending: false });
 
@@ -89,17 +137,7 @@ export default function CustomersPage() {
         return;
       }
 
-      const formattedCustomers: Customer[] = (data || []).map(
-        (customer) => ({
-          id: customer.id,
-          name: customer.name,
-          phone: customer.phone,
-          email: customer.email,
-          status: "active",
-        })
-      );
-
-      setCustomers(formattedCustomers);
+      setCustomers(data || []);
     } catch (error) {
       console.error("Customers loading error:", error);
       setError(t("loadError"));
@@ -111,6 +149,74 @@ export default function CustomersPage() {
   useEffect(() => {
     loadCustomers();
   }, []);
+
+  async function loadCustomerDetails(customer: Customer) {
+    if (!companyId) return;
+
+    setSelectedCustomer(customer);
+    setDetailsLoading(true);
+    setError("");
+
+    try {
+      const [conversationResult, orderResult, taskResult] =
+        await Promise.all([
+          supabase
+            .from("conversations")
+            .select(
+              "id, channel, status, last_message, last_message_at, ai_summary, ai_intent, ai_priority, ai_is_lead"
+            )
+            .eq("company_id", companyId)
+            .eq("customer_id", customer.id)
+            .order("last_message_at", { ascending: false }),
+
+          supabase
+            .from("orders")
+            .select(
+              "id, total, status, service, notes, created_at"
+            )
+            .eq("company_id", companyId)
+            .eq("customer_id", customer.id)
+            .order("created_at", { ascending: false }),
+
+          supabase
+            .from("tasks")
+            .select(
+              "id, title, description, status, priority, due_date, created_at"
+            )
+            .eq("company_id", companyId)
+            .eq("customer_id", customer.id)
+            .order("created_at", { ascending: false }),
+        ]);
+
+      if (conversationResult.error) {
+        console.error(
+          "Customer conversations error:",
+          conversationResult.error
+        );
+      }
+
+      if (orderResult.error) {
+        console.error("Customer orders error:", orderResult.error);
+      }
+
+      if (taskResult.error) {
+        console.error("Customer tasks error:", taskResult.error);
+      }
+
+      setConversations(conversationResult.data || []);
+      setOrders(orderResult.data || []);
+      setTasks(taskResult.data || []);
+    } catch (error) {
+      console.error("Customer details error:", error);
+      setError(
+        isEnglish
+          ? "Unable to load customer details."
+          : "تعذر تحميل تفاصيل العميل."
+      );
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
 
   async function addCustomer() {
     if (!name.trim()) {
@@ -135,7 +241,7 @@ export default function CustomersPage() {
           phone: phone.trim() || null,
           email: email.trim() || null,
         })
-        .select("id, name, phone, email, created_at")
+        .select("id, name, phone, email, notes, created_at")
         .single();
 
       if (insertError) {
@@ -145,18 +251,7 @@ export default function CustomersPage() {
       }
 
       if (data) {
-        const newCustomer: Customer = {
-          id: data.id,
-          name: data.name,
-          phone: data.phone,
-          email: data.email,
-          status: "active",
-        };
-
-        setCustomers((currentCustomers) => [
-          newCustomer,
-          ...currentCustomers,
-        ]);
+        setCustomers((current) => [data, ...current]);
       }
 
       setName("");
@@ -190,28 +285,64 @@ export default function CustomersPage() {
         return;
       }
 
-      setCustomers((currentCustomers) =>
-        currentCustomers.filter((customer) => customer.id !== id)
+      setCustomers((current) =>
+        current.filter((customer) => customer.id !== id)
       );
+
+      if (selectedCustomer?.id === id) {
+        setSelectedCustomer(null);
+        setConversations([]);
+        setOrders([]);
+        setTasks([]);
+      }
     } catch (error) {
       console.error("Customer delete error:", error);
       setError(t("deleteError"));
     }
   }
 
-  const activeCustomers = customers.filter(
-    (customer) => customer.status === "active"
+  const filteredCustomers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return customers;
+
+    return customers.filter((customer) => {
+      return (
+        customer.name.toLowerCase().includes(query) ||
+        customer.email?.toLowerCase().includes(query) ||
+        customer.phone?.toLowerCase().includes(query)
+      );
+    });
+  }, [customers, search]);
+
+  const totalOrderValue = orders.reduce(
+    (sum, order) => sum + Number(order.total || 0),
+    0
   );
 
-  const inactiveCustomers = customers.filter(
-    (customer) => customer.status === "inactive"
+  const activeConversations = conversations.filter(
+    (conversation) =>
+      conversation.status !== "closed" &&
+      conversation.status !== "resolved"
+  ).length;
+
+  const openTasks = tasks.filter(
+    (task) =>
+      task.status !== "completed" &&
+      task.status !== "done"
+  ).length;
+
+  const directionIcon = isEnglish ? (
+    <ArrowRight className="h-4 w-4" />
+  ) : (
+    <ArrowLeft className="h-4 w-4" />
   );
 
   if (!isLoaded) {
     return (
       <main
         dir={isEnglish ? "ltr" : "rtl"}
-        className="flex min-h-[calc(100vh-40px)] items-center justify-center rounded-[24px] bg-[#f8f8f8]"
+        className="flex min-h-[calc(100vh-40px)] items-center justify-center bg-[#f3f3f3]"
       >
         <div className="flex items-center gap-3 text-sm text-neutral-500">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-200 border-t-black" />
@@ -226,18 +357,17 @@ export default function CustomersPage() {
       dir={isEnglish ? "ltr" : "rtl"}
       className="min-h-[calc(100vh-40px)] bg-[#f3f3f3] text-[#111]"
     >
-      <div className="mx-auto max-w-[1500px]">
-        {/* Header */}
+      <div className="mx-auto max-w-[1600px]">
         <header className="rounded-[24px] bg-white px-5 py-6 shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:px-7">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white">
-                  <Users className="h-4 w-4" strokeWidth={1.8} />
+                  <Users className="h-4 w-4" />
                 </div>
 
                 <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  BusinessOS
+                  BusinessOS CRM
                 </span>
               </div>
 
@@ -246,7 +376,9 @@ export default function CustomersPage() {
               </h1>
 
               <p className="mt-2 max-w-xl text-sm leading-6 text-neutral-500">
-                {t("description")}
+                {isEnglish
+                  ? "Manage customers and see their complete business relationship in one place."
+                  : "إدارة العملاء وعرض العلاقة الكاملة مع كل عميل في مكان واحد."}
               </p>
             </div>
 
@@ -270,37 +402,26 @@ export default function CustomersPage() {
         </header>
 
         <div className="mt-5 space-y-5">
-          {/* Error */}
           {error && (
-            <div className="rounded-2xl border border-red-100 bg-white p-4 text-sm text-red-600 shadow-[0_5px_25px_rgba(0,0,0,.03)]">
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-red-600 shadow-[0_5px_25px_rgba(0,0,0,.03)]">
               {error}
             </div>
           )}
 
-          {/* Add Customer */}
           {showForm && (
             <section className="rounded-[24px] bg-white p-5 shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:p-7">
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
-                    New Customer
-                  </p>
+              <div className="mb-6">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
+                  CRM
+                </p>
 
-                  <h2 className="mt-2 text-lg font-bold">
-                    {t("newCustomer")}
-                  </h2>
+                <h2 className="mt-2 text-lg font-bold">
+                  {t("newCustomer")}
+                </h2>
 
-                  <p className="mt-1 text-xs text-neutral-500">
-                    {t("newCustomerDescription")}
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => setShowForm(false)}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-50 text-neutral-400 transition hover:bg-neutral-100 hover:text-black"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {t("newCustomerDescription")}
+                </p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-3">
@@ -332,15 +453,14 @@ export default function CustomersPage() {
                 <button
                   onClick={addCustomer}
                   disabled={saving}
-                  className="h-11 rounded-xl bg-black px-6 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-11 rounded-xl bg-black px-6 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-50"
                 >
                   {saving ? t("saving") : t("saveCustomer")}
                 </button>
 
                 <button
                   onClick={() => setShowForm(false)}
-                  disabled={saving}
-                  className="h-11 rounded-xl border border-neutral-200 bg-white px-6 text-sm font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-11 rounded-xl border border-neutral-200 bg-white px-6 text-sm font-medium text-neutral-600 transition hover:bg-neutral-50"
                 >
                   {t("cancel")}
                 </button>
@@ -348,185 +468,186 @@ export default function CustomersPage() {
             </section>
           )}
 
-          {/* Statistics */}
-          <section className="grid gap-4 sm:grid-cols-3">
-            <StatCard
-              title={t("totalCustomers")}
+          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricCard
+              title={isEnglish ? "Customers" : "العملاء"}
               value={customers.length}
               icon={<Users className="h-4 w-4" />}
-              type="black"
             />
 
-            <StatCard
-              title={t("activeCustomers")}
-              value={activeCustomers.length}
-              icon={<UserCheck className="h-4 w-4" />}
-              type="green"
+            <MetricCard
+              title={isEnglish ? "Conversations" : "المحادثات"}
+              value={
+                selectedCustomer
+                  ? conversations.length
+                  : customers.length > 0
+                    ? "—"
+                    : 0
+              }
+              icon={<MessageSquare className="h-4 w-4" />}
             />
 
-            <StatCard
-              title={t("inactiveCustomers")}
-              value={inactiveCustomers.length}
-              icon={<UserX className="h-4 w-4" />}
-              type="gray"
+            <MetricCard
+              title={isEnglish ? "Orders" : "الطلبات"}
+              value={selectedCustomer ? orders.length : "—"}
+              icon={<ShoppingBag className="h-4 w-4" />}
+            />
+
+            <MetricCard
+              title={isEnglish ? "Open Tasks" : "المهام المفتوحة"}
+              value={selectedCustomer ? openTasks : "—"}
+              icon={<CheckSquare className="h-4 w-4" />}
             />
           </section>
 
-          {/* Customer List */}
-          <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_10px_45px_rgba(0,0,0,.05)]">
-            <div className="flex flex-col gap-4 border-b border-neutral-100 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
-                  Customers
-                </p>
+          <section className="grid gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
+            <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_10px_45px_rgba(0,0,0,.05)]">
+              <div className="border-b border-neutral-100 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
+                      CRM
+                    </p>
 
-                <h2 className="mt-2 text-lg font-bold">
-                  {t("customerList")}
-                </h2>
+                    <h2 className="mt-2 text-lg font-bold">
+                      {isEnglish ? "Customers" : "العملاء"}
+                    </h2>
+                  </div>
 
-                <p className="mt-1 text-xs text-neutral-500">
-                  {t("customerListDescription")}
-                </p>
+                  <span className="rounded-xl bg-neutral-100 px-3 py-2 text-xs font-semibold text-neutral-600">
+                    {filteredCustomers.length}
+                  </span>
+                </div>
+
+                <div className="relative mt-5">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400 rtl:right-3 rtl:left-auto" />
+
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder={
+                      isEnglish
+                        ? "Search customers..."
+                        : "ابحث عن عميل..."
+                    }
+                    className="h-11 w-full rounded-xl border border-neutral-200 bg-[#fafafa] px-10 text-sm outline-none transition focus:border-black focus:bg-white"
+                  />
+                </div>
               </div>
 
-              <div className="w-fit rounded-xl bg-neutral-100 px-3 py-2 text-xs font-semibold text-neutral-600">
-                {customers.length} {t("customerCount")}
+              <div className="max-h-[650px] overflow-y-auto">
+                {filteredCustomers.length === 0 ? (
+                  <div className="px-5 py-16 text-center">
+                    <Users className="mx-auto h-7 w-7 text-neutral-300" />
+
+                    <p className="mt-4 text-sm font-semibold">
+                      {isEnglish
+                        ? "No customers found"
+                        : "لا يوجد عملاء"}
+                    </p>
+                  </div>
+                ) : (
+                  filteredCustomers.map((customer) => {
+                    const selected =
+                      selectedCustomer?.id === customer.id;
+
+                    return (
+                      <button
+                        key={customer.id}
+                        onClick={() =>
+                          loadCustomerDetails(customer)
+                        }
+                        className={`w-full border-b border-neutral-100 p-4 text-start transition ${
+                          selected
+                            ? "bg-black text-white"
+                            : "bg-white hover:bg-neutral-50"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
+                              selected
+                                ? "bg-white text-black"
+                                : "bg-black text-white"
+                            }`}
+                          >
+                            {customer.name
+                              .charAt(0)
+                              .toUpperCase()}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold">
+                              {customer.name}
+                            </p>
+
+                            <p
+                              className={`mt-1 truncate text-xs ${
+                                selected
+                                  ? "text-neutral-300"
+                                  : "text-neutral-400"
+                              }`}
+                            >
+                              {customer.email ||
+                                customer.phone ||
+                                (isEnglish
+                                  ? "No contact information"
+                                  : "لا توجد بيانات اتصال")}
+                            </p>
+                          </div>
+
+                          {directionIcon}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </div>
 
-            {customers.length === 0 ? (
-              <div className="px-5 py-20 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-500">
-                  <Users className="h-6 w-6" strokeWidth={1.6} />
+            <div className="min-w-0">
+              {!selectedCustomer ? (
+                <div className="flex min-h-[500px] items-center justify-center rounded-[24px] bg-white shadow-[0_10px_45px_rgba(0,0,0,.05)]">
+                  <div className="max-w-sm px-6 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-black text-white">
+                      <Users className="h-7 w-7" />
+                    </div>
+
+                    <h2 className="mt-5 text-xl font-bold">
+                      {isEnglish
+                        ? "Select a customer"
+                        : "اختر عميلًا"}
+                    </h2>
+
+                    <p className="mt-2 text-sm leading-6 text-neutral-500">
+                      {isEnglish
+                        ? "Select a customer to view conversations, orders, tasks and AI insights."
+                        : "اختر عميلًا لعرض المحادثات والطلبات والمهام وتحليلات الذكاء الاصطناعي."}
+                    </p>
+                  </div>
                 </div>
-
-                <p className="mt-5 font-semibold">
-                  {t("noCustomers")}
-                </p>
-
-                <p className="mt-2 text-sm text-neutral-500">
-                  {t("noCustomersDescription")}
-                </p>
-
-                <button
-                  onClick={() => setShowForm(true)}
-                  className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-black px-4 text-xs font-semibold text-white transition hover:bg-neutral-800"
-                >
-                  <UserPlus className="h-3.5 w-3.5" />
-                  {t("addCustomer")}
-                </button>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table
-                  className={`w-full min-w-[800px] ${
-                    isEnglish ? "text-left" : "text-right"
-                  }`}
-                >
-                  <thead>
-                    <tr className="border-b border-neutral-100 bg-[#fafafa]">
-                      <TableHead>{t("customer")}</TableHead>
-                      <TableHead>{t("phone")}</TableHead>
-                      <TableHead>{t("email")}</TableHead>
-                      <TableHead>{t("status")}</TableHead>
-                      <TableHead>{t("action")}</TableHead>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {customers.map((customer) => (
-                      <tr
-                        key={customer.id}
-                        className="border-b border-neutral-100 last:border-0 transition hover:bg-[#fafafa]"
-                      >
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black text-xs font-bold text-white">
-                              {customer.name
-                                .charAt(0)
-                                .toUpperCase()}
-                            </div>
-
-                            <div>
-                              <p className="text-sm font-semibold">
-                                {customer.name}
-                              </p>
-
-                              <p className="mt-0.5 text-[10px] text-neutral-400">
-                                {t("businessOSCustomer")}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-5">
-                          {customer.phone ? (
-                            <div className="flex items-center gap-2 text-sm text-neutral-600">
-                              <Phone className="h-3.5 w-3.5 text-neutral-400" />
-                              <span dir="ltr">{customer.phone}</span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-neutral-400">
-                              -
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-5">
-                          {customer.email ? (
-                            <div className="flex items-center gap-2 text-sm text-neutral-600">
-                              <Mail className="h-3.5 w-3.5 text-neutral-400" />
-                              <span>{customer.email}</span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-neutral-400">
-                              -
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-5">
-                          <span
-                            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold ${
-                              customer.status === "active"
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-neutral-100 text-neutral-500"
-                            }`}
-                          >
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${
-                                customer.status === "active"
-                                  ? "bg-emerald-500"
-                                  : "bg-neutral-400"
-                              }`}
-                            />
-
-                            {customer.status === "active"
-                              ? t("active")
-                              : t("inactive")}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-5">
-                          <button
-                            onClick={() =>
-                              deleteCustomer(customer.id)
-                            }
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
-                            title={t("delete")}
-                          >
-                            <Trash2
-                              className="h-3.5 w-3.5"
-                              strokeWidth={1.8}
-                            />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+              ) : (
+                <CustomerDetails
+                  customer={selectedCustomer}
+                  conversations={conversations}
+                  orders={orders}
+                  tasks={tasks}
+                  loading={detailsLoading}
+                  totalOrderValue={totalOrderValue}
+                  activeConversations={activeConversations}
+                  isEnglish={isEnglish}
+                  onDelete={() =>
+                    deleteCustomer(selectedCustomer.id)
+                  }
+                  onClose={() => {
+                    setSelectedCustomer(null);
+                    setConversations([]);
+                    setOrders([]);
+                    setTasks([]);
+                  }}
+                />
+              )}
+            </div>
           </section>
         </div>
       </div>
@@ -534,37 +655,377 @@ export default function CustomersPage() {
   );
 }
 
-function TableHead({
-  children,
+function CustomerDetails({
+  customer,
+  conversations,
+  orders,
+  tasks,
+  loading,
+  totalOrderValue,
+  activeConversations,
+  isEnglish,
+  onDelete,
+  onClose,
 }: {
-  children: React.ReactNode;
+  customer: Customer;
+  conversations: Conversation[];
+  orders: Order[];
+  tasks: Task[];
+  loading: boolean;
+  totalOrderValue: number;
+  activeConversations: number;
+  isEnglish: boolean;
+  onDelete: () => void;
+  onClose: () => void;
 }) {
   return (
-    <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-      {children}
-    </th>
+    <div className="space-y-5">
+      <section className="rounded-[24px] bg-white p-5 shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:p-7">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-black text-xl font-bold text-white">
+              {customer.name.charAt(0).toUpperCase()}
+            </div>
+
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
+                Customer 360
+              </p>
+
+              <h2 className="mt-2 text-2xl font-bold">
+                {customer.name}
+              </h2>
+
+              <div className="mt-3 flex flex-wrap gap-3 text-xs text-neutral-500">
+                {customer.phone && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5" />
+                    <span dir="ltr">{customer.phone}</span>
+                  </span>
+                )}
+
+                {customer.email && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5" />
+                    {customer.email}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-500 transition hover:bg-neutral-50 hover:text-black"
+              title={isEnglish ? "Close" : "إغلاق"}
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <button
+              onClick={onDelete}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-400 transition hover:border-black hover:bg-black hover:text-white"
+              title={isEnglish ? "Delete" : "حذف"}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {customer.notes && (
+          <div className="mt-6 rounded-2xl bg-[#f7f7f7] p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
+              {isEnglish ? "Notes" : "ملاحظات"}
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-neutral-600">
+              {customer.notes}
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-3">
+        <MiniStat
+          title={isEnglish ? "Active Conversations" : "المحادثات النشطة"}
+          value={activeConversations}
+        />
+
+        <MiniStat
+          title={isEnglish ? "Orders" : "الطلبات"}
+          value={orders.length}
+        />
+
+        <MiniStat
+          title={isEnglish ? "Order Value" : "قيمة الطلبات"}
+          value={`${totalOrderValue.toLocaleString()} EGP`}
+        />
+      </section>
+
+      {loading ? (
+        <div className="flex min-h-[300px] items-center justify-center rounded-[24px] bg-white shadow-[0_10px_45px_rgba(0,0,0,.05)]">
+          <div className="flex items-center gap-3 text-sm text-neutral-500">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-200 border-t-black" />
+            {isEnglish
+              ? "Loading customer data..."
+              : "جاري تحميل بيانات العميل..."}
+          </div>
+        </div>
+      ) : (
+        <>
+          <DataSection
+            title={isEnglish ? "Conversations" : "المحادثات"}
+            icon={<MessageSquare className="h-4 w-4" />}
+            count={conversations.length}
+          >
+            {conversations.length === 0 ? (
+              <EmptySection
+                text={
+                  isEnglish
+                    ? "No conversations for this customer yet."
+                    : "لا توجد محادثات لهذا العميل حتى الآن."
+                }
+              />
+            ) : (
+              conversations.map((conversation) => (
+                <div
+                  key={conversation.id}
+                  className="border-b border-neutral-100 p-5 last:border-0"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-lg bg-black px-2.5 py-1 text-[10px] font-semibold text-white">
+                          {conversation.channel}
+                        </span>
+
+                        <span className="rounded-lg bg-neutral-100 px-2.5 py-1 text-[10px] font-semibold text-neutral-600">
+                          {conversation.status}
+                        </span>
+
+                        {conversation.ai_is_lead && (
+                          <span className="rounded-lg border border-black px-2.5 py-1 text-[10px] font-semibold">
+                            Lead
+                          </span>
+                        )}
+                      </div>
+
+                      {conversation.last_message && (
+                        <p className="mt-3 text-sm leading-6 text-neutral-700">
+                          {conversation.last_message}
+                        </p>
+                      )}
+
+                      {conversation.ai_summary && (
+                        <div className="mt-3 rounded-xl bg-[#f7f7f7] p-3">
+                          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                            <Sparkles className="h-3.5 w-3.5" />
+                            AI Summary
+                          </div>
+
+                          <p className="mt-2 text-xs leading-5 text-neutral-600">
+                            {conversation.ai_summary}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {conversation.last_message_at && (
+                      <span className="flex shrink-0 items-center gap-1 text-[10px] text-neutral-400">
+                        <Clock className="h-3 w-3" />
+                        {new Date(
+                          conversation.last_message_at
+                        ).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {(conversation.ai_intent ||
+                    conversation.ai_priority) && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {conversation.ai_intent && (
+                        <span className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[10px] text-neutral-600">
+                          {isEnglish ? "Intent" : "النية"}:{" "}
+                          <strong>
+                            {conversation.ai_intent}
+                          </strong>
+                        </span>
+                      )}
+
+                      {conversation.ai_priority && (
+                        <span className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[10px] text-neutral-600">
+                          {isEnglish ? "Priority" : "الأولوية"}:{" "}
+                          <strong>
+                            {conversation.ai_priority}
+                          </strong>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </DataSection>
+
+          <DataSection
+            title={isEnglish ? "Orders" : "الطلبات"}
+            icon={<ShoppingBag className="h-4 w-4" />}
+            count={orders.length}
+          >
+            {orders.length === 0 ? (
+              <EmptySection
+                text={
+                  isEnglish
+                    ? "No orders for this customer yet."
+                    : "لا توجد طلبات لهذا العميل حتى الآن."
+                }
+              />
+            ) : (
+              orders.map((order) => (
+                <div
+                  key={order.id}
+                  className="flex flex-col gap-3 border-b border-neutral-100 p-5 last:border-0 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {order.service ||
+                        (isEnglish ? "Order" : "طلب")}
+                    </p>
+
+                    <p className="mt-1 text-xs text-neutral-400">
+                      {new Date(
+                        order.created_at
+                      ).toLocaleDateString()}{" "}
+                      · {order.status}
+                    </p>
+
+                    {order.notes && (
+                      <p className="mt-2 text-xs text-neutral-500">
+                        {order.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="text-sm font-bold">
+                    {Number(order.total || 0).toLocaleString()} EGP
+                  </div>
+                </div>
+              ))
+            )}
+          </DataSection>
+
+          <DataSection
+            title={isEnglish ? "Tasks" : "المهام"}
+            icon={<CheckSquare className="h-4 w-4" />}
+            count={tasks.length}
+          >
+            {tasks.length === 0 ? (
+              <EmptySection
+                text={
+                  isEnglish
+                    ? "No tasks for this customer yet."
+                    : "لا توجد مهام لهذا العميل حتى الآن."
+                }
+              />
+            ) : (
+              tasks.map((task) => (
+                <div
+                  key={task.id}
+                  className="border-b border-neutral-100 p-5 last:border-0"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {task.title}
+                      </p>
+
+                      {task.description && (
+                        <p className="mt-1 text-xs leading-5 text-neutral-500">
+                          {task.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex shrink-0 gap-2">
+                      <span className="rounded-lg bg-neutral-100 px-2.5 py-1 text-[10px] font-semibold text-neutral-600">
+                        {task.status}
+                      </span>
+
+                      <span className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[10px] font-semibold text-neutral-600">
+                        {task.priority}
+                      </span>
+                    </div>
+                  </div>
+
+                  {task.due_date && (
+                    <p className="mt-3 flex items-center gap-1.5 text-[10px] text-neutral-400">
+                      <Clock className="h-3 w-3" />
+                      {isEnglish ? "Due" : "موعد التنفيذ"}:{" "}
+                      {new Date(task.due_date).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
+          </DataSection>
+        </>
+      )}
+    </div>
   );
 }
 
-function StatCard({
+function DataSection({
+  title,
+  icon,
+  count,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  count: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_10px_45px_rgba(0,0,0,.05)]">
+      <div className="flex items-center justify-between border-b border-neutral-100 p-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white">
+            {icon}
+          </div>
+
+          <h3 className="text-sm font-bold">{title}</h3>
+        </div>
+
+        <span className="rounded-lg bg-neutral-100 px-2.5 py-1 text-[10px] font-semibold text-neutral-500">
+          {count}
+        </span>
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+function EmptySection({ text }: { text: string }) {
+  return (
+    <div className="p-10 text-center text-sm text-neutral-400">
+      {text}
+    </div>
+  );
+}
+
+function MetricCard({
   title,
   value,
   icon,
-  type,
 }: {
   title: string;
-  value: number;
+  value: string | number;
   icon: React.ReactNode;
-  type: "black" | "green" | "gray";
 }) {
-  const styles = {
-    black: "bg-black text-white",
-    green: "bg-emerald-50 text-emerald-600",
-    gray: "bg-neutral-100 text-neutral-500",
-  };
-
   return (
-    <div className="rounded-[20px] bg-white p-5 shadow-[0_8px_35px_rgba(0,0,0,.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(0,0,0,.07)]">
+    <div className="rounded-[20px] bg-white p-5 shadow-[0_8px_35px_rgba(0,0,0,.04)]">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium text-neutral-500">
@@ -576,12 +1037,25 @@ function StatCard({
           </p>
         </div>
 
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl ${styles[type]}`}
-        >
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-white">
           {icon}
         </div>
       </div>
+    </div>
+  );
+}
+
+function MiniStat({
+  title,
+  value,
+}: {
+  title: string;
+  value: string | number;
+}) {
+  return (
+    <div className="rounded-[20px] border border-neutral-100 bg-white p-5">
+      <p className="text-xs text-neutral-500">{title}</p>
+      <p className="mt-2 text-xl font-bold">{value}</p>
     </div>
   );
 }
