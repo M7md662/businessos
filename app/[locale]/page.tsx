@@ -105,15 +105,8 @@ export default function Dashboard() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      console.log(
-        "BUSINESSOS CURRENT USER:",
-        user?.id
-      );
-
-      console.log(
-        "BUSINESSOS AUTH USER ERROR:",
-        userError
-      );
+      console.log("BUSINESSOS CURRENT USER:", user?.id);
+      console.log("BUSINESSOS AUTH USER ERROR:", userError);
 
       if (userError) {
         throw userError;
@@ -123,26 +116,22 @@ export default function Dashboard() {
         throw new Error(t("loginRequired"));
       }
 
-      const { data: membership, error: membershipError } =
+      const { data: memberships, error: membershipError } =
         await supabase
           .from("company_members")
-          .select("company_id")
+          .select("company_id, role, created_at")
           .eq("user_id", user.id)
-          .maybeSingle();
+          .order("created_at", { ascending: false })
+          .limit(1);
 
-      console.log(
-        "BUSINESSOS MEMBERSHIP:",
-        membership
-      );
-
-      console.log(
-        "BUSINESSOS MEMBERSHIP ERROR:",
-        membershipError
-      );
+      console.log("BUSINESSOS MEMBERSHIPS:", memberships);
+      console.log("BUSINESSOS MEMBERSHIP ERROR:", membershipError);
 
       if (membershipError) {
         throw membershipError;
       }
+
+      const membership = memberships?.[0];
 
       if (!membership?.company_id) {
         throw new Error(t("companyNotFound"));
@@ -150,10 +139,8 @@ export default function Dashboard() {
 
       const companyId = membership.company_id;
 
-      console.log(
-        "BUSINESSOS COMPANY ID:",
-        companyId
-      );
+      console.log("BUSINESSOS COMPANY ID:", companyId);
+      console.log("BUSINESSOS COMPANY ROLE:", membership.role);
 
       const [customersResult, ordersResult, tasksResult] =
         await Promise.all([
@@ -196,10 +183,7 @@ export default function Dashboard() {
       setOrders(ordersResult.data || []);
       setTasks(tasksResult.data || []);
     } catch (err) {
-      console.error(
-        "Dashboard loading error:",
-        err
-      );
+      console.error("Dashboard loading error:", err);
 
       setError(
         err instanceof Error
@@ -323,9 +307,7 @@ export default function Dashboard() {
 
         return {
           day: new Intl.DateTimeFormat(
-            isEnglish
-              ? "en-US"
-              : "ar-EG",
+            isEnglish ? "en-US" : "ar-EG",
             {
               weekday: "short",
             }
