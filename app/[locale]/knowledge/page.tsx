@@ -211,10 +211,10 @@ export default function KnowledgePage() {
         const { data: membership, error: membershipError } =
           await supabase
             .from("company_members")
-            .select("company_id")
-            .eq("user_id", user.id)
-            .limit(1)
-            .maybeSingle();
+            .select("company_id, role, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
 
         if (membershipError || !membership) {
           console.error(
@@ -233,7 +233,7 @@ export default function KnowledgePage() {
         } = await supabase
           .from("subscriptions")
           .select("plan_id, status, end_date")
-          .eq("company_id", membership.company_id)
+          .eq("company_id", membership[0].company_id)
           .eq("status", "active")
           .maybeSingle();
 
@@ -295,7 +295,7 @@ export default function KnowledgePage() {
           .select(
             "company_name, business_info, services, pricing, policies, faq"
           )
-          .eq("company_id", membership.company_id)
+          .eq("company_id", membership[0].company_id)
           .maybeSingle();
 
         if (knowledgeError) {
@@ -396,10 +396,10 @@ export default function KnowledgePage() {
       const { data: membership } =
         await supabase
           .from("company_members")
-          .select("company_id")
-          .eq("user_id", user.id)
-          .limit(1)
-          .maybeSingle();
+          .select("company_id, role, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
 
       if (!membership) {
         return;
@@ -409,7 +409,7 @@ export default function KnowledgePage() {
         await supabase
           .from("subscriptions")
           .select("plan_id, status, end_date")
-          .eq("company_id", membership.company_id)
+          .eq("company_id", membership[0].company_id)
           .eq("status", "active")
           .maybeSingle();
 
@@ -444,7 +444,7 @@ export default function KnowledgePage() {
         .from("knowledge_base")
         .upsert(
           {
-            company_id: membership.company_id,
+            company_id: membership[0].company_id,
             company_name: knowledge.companyName,
             business_info: knowledge.businessInfo,
             services: knowledge.services,
@@ -964,3 +964,5 @@ function FieldLabel({
     </div>
   );
 }
+
+
