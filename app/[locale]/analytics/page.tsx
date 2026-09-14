@@ -66,11 +66,9 @@ export default function AnalyticsPage() {
   const text = isEnglish
     ? {
         title: "Analytics",
-        subtitle:
-          "A clear overview of your business performance.",
+        subtitle: "A clear overview of your business performance.",
         overview: "Business overview",
-        overviewDescription:
-          "Track the most important activity across your workspace.",
+        overviewDescription: "Track the most important activity across your workspace.",
         revenue: "Total revenue",
         orders: "Orders",
         customers: "Customers",
@@ -84,63 +82,53 @@ export default function AnalyticsPage() {
         closedConversations: "Closed conversations",
         activeConversations: "Active conversations",
         performance: "Performance",
-        performanceDescription:
-          "Key operational indicators based on your current data.",
+        performanceDescription: "Key operational indicators based on your current data.",
         taskCompletion: "Task completion",
-        conversationResolution:
-          "Conversation resolution",
+        conversationResolution: "Conversation resolution",
         leadRate: "Lead rate",
         recentActivity: "Recent activity",
-        recentActivityDescription:
-          "A quick view of the latest business records.",
+        recentActivityDescription: "A quick view of the latest business records.",
         latestOrder: "Latest order",
         latestCustomer: "Latest customer",
         noData: "No data available yet.",
         loading: "Loading analytics...",
-        error:
-          "An error occurred while loading analytics.",
+        error: "An error occurred while loading analytics.",
         retry: "Try again",
         connected: "Live data",
         healthy: "Healthy",
       }
     : {
-        title: "التحليلات",
-        subtitle:
-          "نظرة واضحة على أداء أعمالك ونشاط مساحة العمل.",
-        overview: "نظرة عامة على الأعمال",
-        overviewDescription:
-          "تابع أهم المؤشرات والنشاط داخل مساحة العمل.",
-        revenue: "إجمالي الإيرادات",
-        orders: "الطلبات",
-        customers: "العملاء",
-        tasks: "المهام",
-        conversations: "المحادثات",
-        completedTasks: "المهام المكتملة",
-        activeTasks: "المهام النشطة",
-        pendingTasks: "المهام الجديدة",
-        highPriority: "أولوية عالية",
-        leads: "عملاء محتملون",
-        closedConversations: "المحادثات المغلقة",
-        activeConversations: "المحادثات النشطة",
-        performance: "الأداء",
-        performanceDescription:
-          "مؤشرات تشغيلية مبنية على بياناتك الحالية.",
-        taskCompletion: "إنجاز المهام",
-        conversationResolution:
-          "حل المحادثات",
-        leadRate: "نسبة العملاء المحتملين",
-        recentActivity: "النشاط الأخير",
-        recentActivityDescription:
-          "نظرة سريعة على أحدث سجلات العمل.",
-        latestOrder: "أحدث طلب",
-        latestCustomer: "أحدث عميل",
-        noData: "لا توجد بيانات حتى الآن.",
-        loading: "جاري تحميل التحليلات...",
-        error:
-          "حدث خطأ أثناء تحميل بيانات التحليلات.",
-        retry: "إعادة المحاولة",
-        connected: "بيانات مباشرة",
-        healthy: "جيد",
+        title: "\u0627\u0644\u062a\u062d\u0644\u064a\u0644\u0627\u062a",
+        subtitle: "\u0646\u0638\u0631\u0629 \u0648\u0627\u0636\u062d\u0629 \u0639\u0644\u0649 \u0623\u062f\u0627\u0621 \u0623\u0639\u0645\u0627\u0644\u0643 \u0648\u0646\u0634\u0627\u0637 \u0645\u0633\u0627\u062d\u0629 \u0627\u0644\u0639\u0645\u0644.",
+        overview: "\u0646\u0638\u0631\u0629 \u0639\u0627\u0645\u0629 \u0639\u0644\u0649 \u0627\u0644\u0623\u0639\u0645\u0627\u0644",
+        overviewDescription: "\u062a\u0627\u0628\u0639 \u0623\u0647\u0645 \u0627\u0644\u0645\u0624\u0634\u0631\u0627\u062a \u0648\u0627\u0644\u0646\u0634\u0627\u0637 \u062f\u0627\u062e\u0644 \u0645\u0633\u0627\u062d\u0629 \u0627\u0644\u0639\u0645\u0644.",
+        revenue: "\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0625\u064a\u0631\u0627\u062f\u0627\u062a",
+        orders: "\u0627\u0644\u0637\u0644\u0628\u0627\u062a",
+        customers: "\u0627\u0644\u0639\u0645\u0644\u0627\u0621",
+        tasks: "\u0627\u0644\u0645\u0647\u0627\u0645",
+        conversations: "\u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0627\u062a",
+        completedTasks: "\u0627\u0644\u0645\u0647\u0627\u0645 \u0627\u0644\u0645\u0643\u062a\u0645\u0644\u0629",
+        activeTasks: "\u0627\u0644\u0645\u0647\u0627\u0645 \u0627\u0644\u0646\u0634\u0637\u0629",
+        pendingTasks: "\u0627\u0644\u0645\u0647\u0627\u0645 \u0627\u0644\u062c\u062f\u064a\u062f\u0629",
+        highPriority: "\u0623\u0648\u0644\u0648\u064a\u0629 \u0639\u0627\u0644\u064a\u0629",
+        leads: "\u0639\u0645\u0644\u0627\u0621 \u0645\u062d\u062a\u0645\u0644\u0648\u0646",
+        closedConversations: "\u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0627\u062a \u0627\u0644\u0645\u063a\u0644\u0642\u0629",
+        activeConversations: "\u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0627\u062a \u0627\u0644\u0646\u0634\u0637\u0629",
+        performance: "\u0627\u0644\u0623\u062f\u0627\u0621",
+        performanceDescription: "\u0645\u0624\u0634\u0631\u0627\u062a \u062a\u0634\u063a\u064a\u0644\u064a\u0629 \u0645\u0628\u0646\u064a\u0629 \u0639\u0644\u0649 \u0628\u064a\u0627\u0646\u0627\u062a\u0643 \u0627\u0644\u062d\u0627\u0644\u064a\u0629.",
+        taskCompletion: "\u0625\u0646\u062c\u0627\u0632 \u0627\u0644\u0645\u0647\u0627\u0645",
+        conversationResolution: "\u062d\u0644 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0627\u062a",
+        leadRate: "\u0646\u0633\u0628\u0629 \u0627\u0644\u0639\u0645\u0644\u0627\u0621 \u0627\u0644\u0645\u062d\u062a\u0645\u0644\u064a\u0646",
+        recentActivity: "\u0627\u0644\u0646\u0634\u0627\u0637 \u0627\u0644\u0623\u062e\u064a\u0631",
+        recentActivityDescription: "\u0646\u0638\u0631\u0629 \u0633\u0631\u064a\u0639\u0629 \u0639\u0644\u0649 \u0623\u062d\u062f\u062b \u0633\u062c\u0644\u0627\u062a \u0627\u0644\u0639\u0645\u0644.",
+        latestOrder: "\u0623\u062d\u062f\u062b \u0637\u0644\u0628",
+        latestCustomer: "\u0623\u062d\u062f\u062b \u0639\u0645\u064a\u0644",
+        noData: "\u0644\u0627 \u062a\u0648\u062c\u062f \u0628\u064a\u0627\u0646\u0627\u062a \u062d\u062a\u0649 \u0627\u0644\u0622\u0646.",
+        loading: "\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u062a\u062d\u0644\u064a\u0644\u0627\u062a...",
+        error: "\u062d\u062f\u062b \u062e\u0637\u0623 \u0623\u062b\u0646\u0627\u0621 \u062a\u062d\u0645\u064a\u0644 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u062a\u062d\u0644\u064a\u0644\u0627\u062a.",
+        retry: "\u0625\u0639\u0627\u062f\u0629 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629",
+        connected: "\u0628\u064a\u0627\u0646\u0627\u062a \u0645\u0628\u0627\u0634\u0631\u0629",
+        healthy: "\u062c\u064a\u062f",
       };
 
   async function loadAnalytics() {
@@ -162,17 +150,22 @@ export default function AnalyticsPage() {
       }
 
       const {
-        data: membership,
+        data: memberships,
         error: membershipError,
       } = await supabase
         .from("company_members")
-        .select("company_id")
+        .select("company_id, role, created_at")
         .eq("user_id", user.id)
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
 
       if (membershipError) {
         throw membershipError;
+      }
+      const membership = memberships?.[0];
+
+      if (!membership?.company_id) {
+        throw new Error("Company not found");
       }
 
       if (!membership?.company_id) {
@@ -284,28 +277,28 @@ export default function AnalyticsPage() {
 
     const completedTasks = tasks.filter(
       (task) =>
-        task.status === "مكتملة" ||
+        task.status === "Ù…ÙƒØªÙ…Ù„Ø©" ||
         task.status === "completed" ||
         task.status === "Completed"
     ).length;
 
     const activeTasks = tasks.filter(
       (task) =>
-        task.status === "قيد التنفيذ" ||
+        task.status === "Ù‚ÙŠØ¯ Ø§Ù„ØªÙ†ÙÙŠØ°" ||
         task.status === "in_progress" ||
         task.status === "In Progress"
     ).length;
 
     const pendingTasks = tasks.filter(
       (task) =>
-        task.status === "جديدة" ||
+        task.status === "Ø¬Ø¯ÙŠØ¯Ø©" ||
         task.status === "new" ||
         task.status === "New"
     ).length;
 
     const highPriorityTasks = tasks.filter(
       (task) =>
-        task.priority === "عالية" ||
+        task.priority === "Ø¹Ø§Ù„ÙŠØ©" ||
         task.priority === "high" ||
         task.priority === "High"
     ).length;
@@ -313,7 +306,7 @@ export default function AnalyticsPage() {
     const closedConversations =
       conversations.filter(
         (conversation) =>
-          conversation.status === "مغلقة" ||
+          conversation.status === "Ù…ØºÙ„Ù‚Ø©" ||
           conversation.status === "closed" ||
           conversation.status === "Closed"
       ).length;
@@ -383,7 +376,7 @@ export default function AnalyticsPage() {
     value: string | null
   ) {
     if (!value) {
-      return "—";
+      return "â€”";
     }
 
     return new Intl.DateTimeFormat(
@@ -720,7 +713,7 @@ export default function AnalyticsPage() {
                           task.created_at
                         )}
                         value={
-                          task.priority || "—"
+                          task.priority || "â€”"
                         }
                         icon={
                           <CheckCircle2 className="h-3.5 w-3.5" />
@@ -759,7 +752,7 @@ export default function AnalyticsPage() {
                             conversation.ai_is_lead
                               ? text.leads
                               : conversation.ai_priority ||
-                                "—"
+                                "â€”"
                           }
                           icon={
                             <MessageCircle className="h-3.5 w-3.5" />
@@ -991,3 +984,6 @@ function EmptyRow({
     </div>
   );
 }
+
+
+

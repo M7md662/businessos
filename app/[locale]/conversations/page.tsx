@@ -25,7 +25,7 @@ import {
 import { useLocale } from "next-intl";
 import { supabase } from "@/lib/supabase";
 
-const hasFeature = (_plan: string, _feature: string) => true;
+import { hasFeature } from "@/lib/plan-permissions";
 
 type ConversationStatus = "جديدة" | "قيد المتابعة" | "مغلقة";
 
@@ -333,13 +333,14 @@ export default function ConversationsPage() {
         return;
       }
 
-      const { data: membership, error: membershipError } =
-        await supabase
-          .from("company_members")
-          .select("company_id")
-          .eq("user_id", user.id)
-          .limit(1)
-          .maybeSingle();
+      const { data: memberships, error: membershipError } = await supabase
+        .from("company_members")
+        .select("company_id, role, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const membership = memberships?.[0];
 
       if (membershipError) throw membershipError;
 
@@ -385,15 +386,15 @@ export default function ConversationsPage() {
 
       let advancedEnabled = false;
 
-      const { data: subscription } = await supabase
+      const { data: subscriptions } = await supabase
         .from("subscriptions")
-        .select("plan_id,status")
+        .select("plan_id,status,end_date,created_at")
         .eq("company_id", membership.company_id)
         .eq("status", "active")
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
 
-      if (subscription?.plan_id) {
+      const subscription = subscriptions?.[0]; const subscriptionExpired = subscription?.end_date && new Date(subscription.end_date).getTime() <= Date.now(); if (subscription?.plan_id && !subscriptionExpired) {
         const { data: plan } = await supabase
           .from("plans")
           .select("name")
@@ -1126,15 +1127,14 @@ export default function ConversationsPage() {
       );
     }
 
-    const {
-      data: membership,
-      error: membershipError,
-    } = await supabase
+    const { data: memberships, error: membershipError } = await supabase
       .from("company_members")
-      .select("company_id")
+      .select("company_id, role, created_at")
       .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle();
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const membership = memberships?.[0];
 
     if (membershipError || !membership) {
       throw new Error(
@@ -1235,15 +1235,14 @@ async function updateCustomerFromAnalysis() {
       );
     }
 
-    const {
-      data: membership,
-      error: membershipError,
-    } = await supabase
+    const { data: memberships, error: membershipError } = await supabase
       .from("company_members")
-      .select("company_id")
+      .select("company_id, role, created_at")
       .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle();
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const membership = memberships?.[0];
 
     if (membershipError || !membership) {
       throw new Error(
@@ -1353,13 +1352,14 @@ async function createTaskFromAnalysis() {
       );
     }
 
-    const { data: membership, error: membershipError } =
-      await supabase
+    const { data: memberships, error: membershipError } = await supabase
         .from("company_members")
-        .select("company_id")
+        .select("company_id, role, created_at")
         .eq("user_id", user.id)
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const membership = memberships?.[0];
 
     if (membershipError || !membership) {
       throw new Error(
@@ -2902,6 +2902,12 @@ return (
     </main>
   );
 }
+
+
+
+
+
+
 
 
 

@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+﻿import { supabase } from "@/lib/supabase";
 
 export type SubscriptionStatus =
   | "active"
@@ -35,23 +35,25 @@ export type Plan = {
 export async function getCompanySubscription(
   companyId: string
 ): Promise<Subscription | null> {
-  const { data, error } = await supabase
+  const { data: subscriptions, error } = await supabase
     .from("subscriptions")
     .select("*")
     .eq("company_id", companyId)
     .eq("status", "active")
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(1);
 
   if (error) {
     console.error("Get company subscription error:", error);
     return null;
   }
 
+  const data = subscriptions?.[0] ?? null;
+
   if (!data) {
     return null;
   }
 
-  // Check expiration
   if (
     data.end_date &&
     new Date(data.end_date).getTime() <= Date.now()

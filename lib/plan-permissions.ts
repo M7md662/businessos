@@ -143,3 +143,4 @@ export function isPlanAtLeast(
 ): boolean {
   return getPlanLevel(currentPlan) >= getPlanLevel(requiredPlan);
 }
+

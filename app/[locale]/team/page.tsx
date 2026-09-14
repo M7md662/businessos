@@ -62,15 +62,16 @@ export default function TeamPage() {
         throw new Error("يجب تسجيل الدخول أولاً");
       }
 
-      const { data: membership, error: membershipError } =
-        await supabase
-          .from("company_members")
-          .select("company_id, role")
-          .eq("user_id", user.id)
-          .limit(1)
-          .maybeSingle();
+      const { data: memberships, error: membershipError } = await supabase
+        .from("company_members")
+        .select("company_id, role, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
 
       if (membershipError) throw membershipError;
+
+      const membership = memberships?.[0];
 
       if (!membership) {
         throw new Error("لم يتم العثور على شركة لهذا الحساب");
@@ -324,6 +325,26 @@ export default function TeamPage() {
   }, []);
 
   if (loading) {
+
+  if (!isOwner) {
+    return (
+      <main
+        dir="rtl"
+        className="min-h-screen bg-white p-6"
+      >
+        <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <h1 className="text-xl font-black text-slate-950">
+            ?????? ??? ?????? ????
+          </h1>
+
+          <p className="mt-2 text-sm text-slate-500">
+            ??? ???? ?????? ?????? ????? ????? ??????.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
     return (
       <main className="min-h-screen bg-white p-6">
         <div className="flex min-h-[60vh] items-center justify-center">
@@ -718,4 +739,7 @@ export default function TeamPage() {
     </main>
   );
 }
+
+
+
 

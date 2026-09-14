@@ -194,6 +194,7 @@ export default function KnowledgePage() {
     useState<AccessState>("loading");
 
   const [planName, setPlanName] = useState("");
+  const [accessReason, setAccessReason] = useState<"owner" | "plan" | "">("");
 
   useEffect(() => {
     async function loadKnowledge() {
@@ -216,7 +217,11 @@ export default function KnowledgePage() {
         .order("created_at", { ascending: false })
         .limit(1);
 
-        if (membershipError || !membership) {
+        if (
+          membershipError ||
+          !membership ||
+          membership.length === 0
+        ) {
           console.error(
             "Membership lookup error:",
             membershipError
@@ -227,13 +232,22 @@ export default function KnowledgePage() {
           return;
         }
 
+        const activeMembership = membership[0];
+
+        if (activeMembership.role !== "owner") {
+          setAccessReason("owner");
+          setAccessState("denied");
+          setIsLoaded(true);
+          return;
+        }
+
         const {
           data: subscription,
           error: subscriptionError,
         } = await supabase
           .from("subscriptions")
           .select("plan_id, status, end_date")
-          .eq("company_id", membership[0].company_id)
+          .eq("company_id", activeMembership.company_id)
           .eq("status", "active")
           .maybeSingle();
 
@@ -280,6 +294,7 @@ export default function KnowledgePage() {
         setPlanName(plan.name);
 
         if (!hasFeature(plan.name, "knowledge")) {
+          setAccessReason("plan");
           setAccessState("denied");
           setIsLoaded(true);
           return;
@@ -295,7 +310,7 @@ export default function KnowledgePage() {
           .select(
             "company_name, business_info, services, pricing, policies, faq"
           )
-          .eq("company_id", membership[0].company_id)
+          .eq("company_id", activeMembership.company_id)
           .maybeSingle();
 
         if (knowledgeError) {
@@ -401,15 +416,21 @@ export default function KnowledgePage() {
         .order("created_at", { ascending: false })
         .limit(1);
 
-      if (!membership) {
+      if (
+        !membership ||
+        membership.length === 0 ||
+        membership[0].role !== "owner"
+      ) {
         return;
       }
+
+      const activeMembership = membership[0];
 
       const { data: subscription } =
         await supabase
           .from("subscriptions")
           .select("plan_id, status, end_date")
-          .eq("company_id", membership[0].company_id)
+          .eq("company_id", activeMembership.company_id)
           .eq("status", "active")
           .maybeSingle();
 
@@ -531,7 +552,11 @@ export default function KnowledgePage() {
           </p>
 
           <p className="mt-2 text-xs leading-6 text-neutral-400">
-            {labels.accessHint}
+            {accessReason === "owner"
+              ? isEnglish
+                ? "The Knowledge Base is available to the company owner only."
+                : "\u0642\u0627\u0639\u062f\u0629 \u0627\u0644\u0645\u0639\u0631\u0641\u0629 \u0645\u062a\u0627\u062d\u0629 \u0644\u0645\u0627\u0644\u0643 \u0627\u0644\u0634\u0631\u0643\u0629 \u0641\u0642\u0637."
+              : labels.accessHint}
           </p>
 
           {planName && (
@@ -964,5 +989,6 @@ function FieldLabel({
     </div>
   );
 }
+
 
 

@@ -20,12 +20,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: membership, error: membershipError } = await supabase
+    const { data: memberships, error: membershipError } = await supabase
       .from("company_members")
-      .select("company_id")
+      .select("company_id, role, created_at")
       .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle();
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const membership = memberships?.[0];
 
     if (membershipError || !membership) {
       return NextResponse.json(
@@ -38,16 +40,18 @@ export async function POST(req: Request) {
 
     const companyId = membership.company_id;
 
-    const { data: subscription, error: subscriptionError } =
+    const { data: subscriptions, error: subscriptionError } =
       await supabase
         .from("subscriptions")
         .select("*")
         .eq("company_id", companyId)
         .eq("status", "active")
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+    const subscription = subscriptions?.[0];
 
     console.log("[ADVANCED AI] SUBSCRIPTION", JSON.stringify(subscription), subscriptionError);
-
     if (subscriptionError || !subscription) {
       return NextResponse.json(
         { error: "لا يوجد اشتراك نشط." },
@@ -456,6 +460,12 @@ ${conversationText}`,
     );
   }
 }
+
+
+
+
+
+
 
 
 

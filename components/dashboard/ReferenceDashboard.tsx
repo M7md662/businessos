@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React from "react";
+import React, { useMemo, useState } from "react";
 
 type ChartBar = {
   day: string;
@@ -157,6 +157,10 @@ export default function ReferenceDashboard({
   formatMoney,
   formatDate,
 }: ReferenceDashboardProps) {
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+
   const labels = isEnglish
     ? {
         home: "Home",
@@ -175,6 +179,10 @@ export default function ReferenceDashboard({
         average: "Average Order",
         noData: "No recent activity",
         error: "Something went wrong",
+        noResults: "No results found",
+        addCustomer: "Add Customer",
+        addOrder: "Add Order",
+        addTask: "Add Task",
       }
     : {
         home: "الرئيسية",
@@ -193,7 +201,40 @@ export default function ReferenceDashboard({
         average: "متوسط الطلب",
         noData: "لا توجد أنشطة حديثة",
         error: "حدث خطأ",
+        noResults: "لا توجد نتائج",
+        addCustomer: "إضافة عميل",
+        addOrder: "إضافة طلب",
+        addTask: "إضافة مهمة",
       };
+
+  const searchResults = useMemo(() => {
+    const query = searchValue.trim().toLowerCase();
+
+    if (!query) {
+      return [];
+    }
+
+    return recentOrders
+      .filter((order) => {
+        const customer = order.customer_name || "";
+        const service = order.service || "";
+        const status = order.status || "";
+
+        return `${customer} ${service} ${status}`
+          .toLowerCase()
+          .includes(query);
+      })
+      .slice(0, 5);
+  }, [recentOrders, searchValue]);
+
+  function goTo(path: string) {
+    window.location.href = `/${isEnglish ? "en" : "ar"}${path}`;
+  }
+
+  function closeSearch() {
+    setSearchOpen(false);
+    setSearchValue("");
+  }
 
   return (
     <main
@@ -203,20 +244,134 @@ export default function ReferenceDashboard({
       <div className="mx-auto min-h-[calc(100vh-24px)] max-w-[1500px] overflow-hidden rounded-[24px] bg-white shadow-[0_10px_45px_rgba(0,0,0,.06)]">
         <section className="min-w-0 bg-[#f8f8f8]">
           <header className="flex items-center gap-3 border-b border-neutral-100 bg-white px-4 py-4 sm:px-6">
-            <div className="flex h-9 max-w-[390px] flex-1 items-center gap-2 rounded-xl bg-neutral-50 px-3 text-neutral-400">
-              <span className="text-xs">⌕</span>
+            <div className="relative flex h-9 max-w-[390px] flex-1 items-center gap-2 rounded-xl bg-neutral-50 px-3 text-neutral-400">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchOpen(true);
+                  setQuickActionsOpen(false);
+                }}
+                className="shrink-0 text-sm text-neutral-500 transition hover:text-black"
+                aria-label={labels.search}
+              >
+                ⌕
+              </button>
 
-              <span className="text-[10px]">
-                {labels.search}
-              </span>
+              {searchOpen ? (
+                <input
+                  autoFocus
+                  value={searchValue}
+                  onChange={(event) =>
+                    setSearchValue(event.target.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      closeSearch();
+                    }
+                  }}
+                  placeholder={labels.search}
+                  className="w-full bg-transparent text-xs text-black outline-none placeholder:text-neutral-400"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchOpen(true);
+                    setQuickActionsOpen(false);
+                  }}
+                  className="flex-1 text-start text-[10px] text-neutral-400"
+                >
+                  {labels.search}
+                </button>
+              )}
+
+              {searchOpen && searchValue.trim() && (
+                <div className="absolute left-0 right-0 top-11 z-50 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-2 shadow-xl">
+                  {searchResults.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-neutral-400">
+                      {labels.noResults}
+                    </div>
+                  ) : (
+                    searchResults.map((order) => (
+                      <button
+                        key={order.id}
+                        type="button"
+                        onClick={() => {
+                          goTo(
+                            `/orders?search=${encodeURIComponent(
+                              order.customer_name ||
+                                order.service ||
+                                ""
+                            )}`
+                          );
+                          closeSearch();
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl p-3 text-start transition hover:bg-neutral-50"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-semibold text-black">
+                            {order.customer_name ||
+                              (isEnglish ? "Customer" : "عميل")}
+                          </p>
+
+                          <p className="truncate text-[10px] text-neutral-400">
+                            {order.service ||
+                              (isEnglish ? "Order" : "طلب")}
+                          </p>
+                        </div>
+
+                        <span className="text-[10px] font-semibold text-black">
+                          {formatMoney(Number(order.total || 0))}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
-            <button
-              type="button"
-              className="hidden h-9 w-9 rounded-xl border border-neutral-100 bg-white text-xs transition hover:bg-neutral-50 sm:block"
-            >
-              +
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickActionsOpen((value) => !value);
+                  setSearchOpen(false);
+                  setSearchValue("");
+                }}
+                className="hidden h-9 w-9 rounded-xl border border-neutral-100 bg-white text-xs transition hover:bg-neutral-50 sm:block"
+                aria-label={isEnglish ? "Add" : "إضافة"}
+              >
+                +
+              </button>
+
+              {quickActionsOpen && (
+                <div className="absolute left-0 top-11 z-50 w-44 overflow-hidden rounded-2xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => goTo("/customers")}
+                    className="w-full rounded-xl px-3 py-2.5 text-start text-xs transition hover:bg-neutral-50"
+                  >
+                    {labels.addCustomer}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => goTo("/orders")}
+                    className="w-full rounded-xl px-3 py-2.5 text-start text-xs transition hover:bg-neutral-50"
+                  >
+                    {labels.addOrder}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => goTo("/tasks")}
+                    className="w-full rounded-xl px-3 py-2.5 text-start text-xs transition hover:bg-neutral-50"
+                  >
+                    {labels.addTask}
+                  </button>
+                </div>
+              )}
+            </div>
 
             <button
               type="button"

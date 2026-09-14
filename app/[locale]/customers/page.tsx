@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
+type Role = "owner" | "employee";
+
 type Customer = {
   id: string;
   name: string;
@@ -84,8 +86,12 @@ export default function CustomersPage() {
   const [email, setEmail] = useState("");
 
   const [companyId, setCompanyId] = useState<string | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
+
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const isOwner = role === "owner";
 
   async function loadCustomers() {
     try {
@@ -102,12 +108,13 @@ export default function CustomersPage() {
         return;
       }
 
-      const { data: membership, error: membershipError } =
+      const { data: memberships, error: membershipError } =
         await supabase
           .from("company_members")
-          .select("company_id")
+          .select("company_id, role, created_at")
           .eq("user_id", user.id)
-          .maybeSingle();
+          .order("created_at", { ascending: false })
+          .limit(1);
 
       if (membershipError) {
         console.error("Company membership error:", membershipError);
@@ -116,6 +123,8 @@ export default function CustomersPage() {
         return;
       }
 
+      const membership = memberships?.[0];
+
       if (!membership?.company_id) {
         setError(t("companyNotFound"));
         setIsLoaded(true);
@@ -123,6 +132,11 @@ export default function CustomersPage() {
       }
 
       setCompanyId(membership.company_id);
+
+      const normalizedRole =
+        membership.role === "owner" ? "owner" : "employee";
+
+      setRole(normalizedRole);
 
       const { data, error: customersError } = await supabase
         .from("customers")
@@ -267,6 +281,15 @@ export default function CustomersPage() {
   }
 
   async function deleteCustomer(id: string) {
+    if (!isOwner) {
+      setError(
+        isEnglish
+          ? "Only the company owner can delete customers."
+          : "فقط مالك الشركة يمكنه حذف العملاء."
+      );
+      return;
+    }
+
     const confirmed = window.confirm(t("deleteConfirm"));
 
     if (!confirmed) return;
@@ -636,6 +659,7 @@ export default function CustomersPage() {
                   totalOrderValue={totalOrderValue}
                   activeConversations={activeConversations}
                   isEnglish={isEnglish}
+                  isOwner={isOwner}
                   onDelete={() =>
                     deleteCustomer(selectedCustomer.id)
                   }
@@ -664,6 +688,7 @@ function CustomerDetails({
   totalOrderValue,
   activeConversations,
   isEnglish,
+  isOwner,
   onDelete,
   onClose,
 }: {
@@ -675,6 +700,7 @@ function CustomerDetails({
   totalOrderValue: number;
   activeConversations: number;
   isEnglish: boolean;
+  isOwner: boolean;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -723,13 +749,15 @@ function CustomerDetails({
               <X className="h-4 w-4" />
             </button>
 
-            <button
-              onClick={onDelete}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-400 transition hover:border-black hover:bg-black hover:text-white"
-              title={isEnglish ? "Delete" : "حذف"}
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            {isOwner && (
+              <button
+                onClick={onDelete}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-400 transition hover:border-black hover:bg-black hover:text-white"
+                title={isEnglish ? "Delete" : "حذف"}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
 

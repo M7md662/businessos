@@ -100,6 +100,7 @@ export default function SettingsPage() {
         secure: "Your session is secure.",
         workspaceAccess: "Workspace access",
         fullAccess: "Full access",
+        employeeAccess: "Employee access",
         teamManagement: "Team management",
         teamDescription:
           "Manage employees, invitations, roles and team access.",
@@ -251,12 +252,23 @@ export default function SettingsPage() {
         setEmail(user.email);
       }
 
-      const { data: membership } = await supabase
-        .from("company_members")
-        .select("company_id, role")
-        .eq("user_id", user.id)
-        .limit(1)
-        .maybeSingle();
+      const { data: memberships, error: membershipError } =
+        await supabase
+          .from("company_members")
+          .select("company_id, role, created_at")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+      if (membershipError) {
+        console.error(
+          "Failed to load company membership:",
+          membershipError
+        );
+        return;
+      }
+
+      const membership = memberships?.[0];
 
       setIsOwner(membership?.role === "owner");
 
@@ -1056,7 +1068,7 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="mt-1 text-[10px] text-neutral-400">
-                      {text.fullAccess}
+                      {isOwner ? text.fullAccess : text.employeeAccess}
                     </div>
                   </div>
                 </div>
@@ -1259,3 +1271,4 @@ function ToggleRow({
     </div>
   );
 }
+

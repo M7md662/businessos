@@ -51,6 +51,7 @@ const navigation = [
         nameKey: "knowledgeBase",
         href: "/knowledge",
         icon: "book",
+        ownerOnly: true,
       },
       {
         nameKey: "aiAssistant",
@@ -115,7 +116,7 @@ function Icon({
       return (
         <svg {...common}>
           <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.41 1.41-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.04 1.56V19.6h-2v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-1.41-1.41.06-.06A1.7 1.7 0 0 0 9.4 15a1.7 1.7 0 0 0-1.56-1.04H7.75v-2h.09A1.7 1.7 0 0 0 9.4 10.9a1.7 1.7 0 0 0-.34-1.88L9 8.96l1.41-1.41.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.04-1.56V6.3h2v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.41 1.41-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.04h.09v2h-.09A1.7 1.7 0 0 0 19.4 15Z" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.41 1.41-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.04 1.56V19.6h-2v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-1.41-1.41.06-.06A1.7 1.7 0 0 0 9.4 15a1.7 1.7 0 0 0-1.56-1.04H7.75v-2h.09A1.7 1.7 0 0 0 9.4 10.9a1.7 1.7 0 0 0-.34-1.88L9 8.96l1.41-1.41.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.41 1.41-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.04h.09v2h-.09A1.7 1.7 0 0 0 19.4 15Z" />
         </svg>
       );
 
@@ -306,7 +307,6 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile menu */}
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -318,7 +318,6 @@ export default function Sidebar() {
         <span className="text-xl">☰</span>
       </button>
 
-      {/* Mobile overlay */}
       {open && (
         <button
           type="button"
@@ -328,7 +327,6 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Sidebar */}
       <aside
         dir={isEnglish ? "ltr" : "rtl"}
         className={`fixed ${
@@ -341,7 +339,6 @@ export default function Sidebar() {
               : "translate-x-full"
         }`}
       >
-        {/* Brand */}
         <div className="border-b border-neutral-100 px-5 py-5">
           <Link
             href={getLocalizedPath("/")}
@@ -370,7 +367,6 @@ export default function Sidebar() {
           </Link>
         </div>
 
-        {/* Workspace */}
         <div className="px-4 pt-4">
           <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-black text-xs font-black text-white">
@@ -406,114 +402,122 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-6">
-          {navigation.map((section) => (
-            <div
-              key={section.sectionKey}
-              className="mb-6 last:mb-0"
-            >
-              <p className="mb-2 px-3 text-[9px] font-bold tracking-wide text-neutral-400">
-                {t(section.sectionKey)}
-              </p>
+          {navigation.map((section) => {
+            const visibleItems = section.items.filter(
+              (item) => !item.ownerOnly || isOwner
+            );
 
-              <div className="space-y-1">
-                {section.items.map((item) => {
-                  const localizedHref =
-                    getLocalizedPath(item.href);
+            if (visibleItems.length === 0) {
+              return null;
+            }
 
-                  const isActive =
-                    item.href === "/"
-                      ? pathname === localizedHref
-                      : pathname.startsWith(localizedHref);
+            return (
+              <div
+                key={section.sectionKey}
+                className="mb-6 last:mb-0"
+              >
+                <p className="mb-2 px-3 text-[9px] font-bold tracking-wide text-neutral-400">
+                  {t(section.sectionKey)}
+                </p>
 
-                  if (item.ai) {
+                <div className="space-y-1">
+                  {visibleItems.map((item) => {
+                    const localizedHref =
+                      getLocalizedPath(item.href);
+
+                    const isActive =
+                      item.href === "/"
+                        ? pathname === localizedHref
+                        : pathname.startsWith(localizedHref);
+
+                    if (item.ai) {
+                      return (
+                        <Link
+                          key={item.href}
+                          href={localizedHref}
+                          onClick={() => setOpen(false)}
+                          className={`group flex min-h-[50px] items-center gap-3 rounded-xl px-3 transition-all ${
+                            isActive
+                              ? "bg-black text-white"
+                              : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
+                          }`}
+                        >
+                          <div
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                              isActive
+                                ? "bg-white text-black"
+                                : "bg-neutral-100 text-black"
+                            }`}
+                          >
+                            <Icon name="spark" size={18} />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[12px] font-bold">
+                              {t(item.nameKey)}
+                            </p>
+
+                            <p
+                              className={`mt-0.5 truncate text-[9px] ${
+                                isActive
+                                  ? "text-neutral-300"
+                                  : "text-neutral-400"
+                              }`}
+                            >
+                              {t("aiBusinessAssistant")}
+                            </p>
+                          </div>
+
+                          <span
+                            className={`rounded-md px-1.5 py-1 text-[8px] font-bold ${
+                              isActive
+                                ? "bg-white text-black"
+                                : "bg-neutral-100 text-neutral-600"
+                            }`}
+                          >
+                            AI
+                          </span>
+                        </Link>
+                      );
+                    }
+
                     return (
                       <Link
                         key={item.href}
                         href={localizedHref}
                         onClick={() => setOpen(false)}
-                        className={`group flex min-h-[50px] items-center gap-3 rounded-xl px-3 transition-all ${
+                        className={`group flex h-[48px] items-center gap-3 rounded-xl px-3 transition-all ${
                           isActive
                             ? "bg-black text-white"
                             : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
                         }`}
                       >
                         <div
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition ${
                             isActive
                               ? "bg-white text-black"
-                              : "bg-neutral-100 text-black"
+                              : "bg-neutral-100 text-neutral-500 group-hover:bg-white group-hover:text-black"
                           }`}
                         >
-                          <Icon name="spark" size={18} />
+                          <Icon name={item.icon} size={18} />
                         </div>
 
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[12px] font-bold">
-                            {t(item.nameKey)}
-                          </p>
-
-                          <p
-                            className={`mt-0.5 truncate text-[9px] ${
-                              isActive
-                                ? "text-neutral-300"
-                                : "text-neutral-400"
-                            }`}
-                          >
-                            {t("aiBusinessAssistant")}
-                          </p>
-                        </div>
-
-                        <span
-                          className={`rounded-md px-1.5 py-1 text-[8px] font-bold ${
-                            isActive
-                              ? "bg-white text-black"
-                              : "bg-neutral-100 text-neutral-600"
-                          }`}
-                        >
-                          AI
+                        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">
+                          {t(item.nameKey)}
                         </span>
+
+                        {isActive && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                        )}
                       </Link>
                     );
-                  }
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={localizedHref}
-                      onClick={() => setOpen(false)}
-                      className={`group flex h-[48px] items-center gap-3 rounded-xl px-3 transition-all ${
-                        isActive
-                          ? "bg-black text-white"
-                          : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
-                      }`}
-                    >
-                      <div
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition ${
-                          isActive
-                            ? "bg-white text-black"
-                            : "bg-neutral-100 text-neutral-500 group-hover:bg-white group-hover:text-black"
-                        }`}
-                      >
-                        <Icon name={item.icon} size={18} />
-                      </div>
-
-                      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">
-                        {t(item.nameKey)}
-                      </span>
-
-                      {isActive && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                      )}
-                    </Link>
-                  );
-                })}
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
-          {/* Owner Navigation */}
           {isOwner && (
             <div className="mb-6">
               <p className="mb-2 px-3 text-[9px] font-bold tracking-wide text-neutral-400">
@@ -589,7 +593,6 @@ export default function Sidebar() {
           )}
         </nav>
 
-        {/* Language */}
         <div className="px-4 pb-3">
           <button
             type="button"
@@ -604,7 +607,6 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {/* AI */}
         <div className="px-4 pb-3">
           <Link
             href={getLocalizedPath("/ai")}
@@ -640,7 +642,6 @@ export default function Sidebar() {
           </Link>
         </div>
 
-        {/* Account */}
         <div className="border-t border-neutral-100 px-4 py-4">
           <div className="relative">
             <div className="flex items-center gap-3 px-2">
