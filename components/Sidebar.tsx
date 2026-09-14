@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+
+type Role = "owner" | "employee";
 
 const navigation = [
   {
@@ -109,6 +111,14 @@ function Icon({
         </svg>
       );
 
+    case "settings":
+      return (
+        <svg {...common}>
+          <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.41 1.41-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.04 1.56V19.6h-2v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-1.41-1.41.06-.06A1.7 1.7 0 0 0 9.4 15a1.7 1.7 0 0 0-1.56-1.04H7.75v-2h.09A1.7 1.7 0 0 0 9.4 10.9a1.7 1.7 0 0 0-.34-1.88L9 8.96l1.41-1.41.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.04-1.56V6.3h2v.09a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 1.41 1.41-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.04h.09v2h-.09A1.7 1.7 0 0 0 19.4 15Z" />
+        </svg>
+      );
+
     case "orders":
       return (
         <svg {...common}>
@@ -169,10 +179,99 @@ export default function Sidebar() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  const [userName, setUserName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [role, setRole] = useState<Role | null>(null);
+  const [loadingAccount, setLoadingAccount] = useState(true);
+
   const isEnglish = locale === "en";
+  const isOwner = role === "owner";
 
   function getLocalizedPath(path: string) {
     return `/${locale}${path === "/" ? "" : path}`;
+  }
+
+  useEffect(() => {
+    loadAccount();
+  }, []);
+
+  async function loadAccount() {
+    setLoadingAccount(true);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        setLoadingAccount(false);
+        return;
+      }
+
+      const metadataName =
+        typeof user.user_metadata?.full_name === "string"
+          ? user.user_metadata.full_name
+          : typeof user.user_metadata?.name === "string"
+            ? user.user_metadata.name
+            : "";
+
+      setUserName(
+        metadataName ||
+          user.email?.split("@")[0] ||
+          (isEnglish ? "User" : "المستخدم")
+      );
+
+      const { data: memberships, error: membershipError } =
+        await supabase
+          .from("company_members")
+          .select("company_id, role, created_at")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+      if (membershipError) {
+        throw membershipError;
+      }
+
+      const membership = memberships?.[0];
+
+      if (!membership?.company_id) {
+        setRole(null);
+        setCompanyName("");
+        return;
+      }
+
+      setRole(
+        membership.role === "owner"
+          ? "owner"
+          : "employee"
+      );
+
+      const { data: company, error: companyError } =
+        await supabase
+          .from("companies")
+          .select("name")
+          .eq("id", membership.company_id)
+          .maybeSingle();
+
+      if (companyError) {
+        throw companyError;
+      }
+
+      setCompanyName(
+        company?.name ||
+          (isEnglish ? "My Company" : "شركتي")
+      );
+    } catch (error) {
+      console.error("Sidebar account loading error:", error);
+    } finally {
+      setLoadingAccount(false);
+    }
   }
 
   function switchLanguage() {
@@ -275,12 +374,17 @@ export default function Sidebar() {
         <div className="px-4 pt-4">
           <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-black text-xs font-black text-white">
-              D
+              {companyName
+                ? companyName.charAt(0).toUpperCase()
+                : "B"}
             </div>
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-[12px] font-bold text-black">
-                Devora
+                {loadingAccount
+                  ? "..."
+                  : companyName ||
+                    (isEnglish ? "My Company" : "شركتي")}
               </p>
 
               <p className="mt-0.5 truncate text-[9px] text-neutral-400">
@@ -408,6 +512,81 @@ export default function Sidebar() {
               </div>
             </div>
           ))}
+
+          {/* Owner Navigation */}
+          {isOwner && (
+            <div className="mb-6">
+              <p className="mb-2 px-3 text-[9px] font-bold tracking-wide text-neutral-400">
+                {isEnglish ? "Administration" : "الإدارة"}
+              </p>
+
+              <div className="space-y-1">
+                <Link
+                  href={getLocalizedPath("/team")}
+                  onClick={() => setOpen(false)}
+                  className={`group flex h-[48px] items-center gap-3 rounded-xl px-3 transition-all ${
+                    pathname.startsWith(getLocalizedPath("/team"))
+                      ? "bg-black text-white"
+                      : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
+                  }`}
+                >
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      pathname.startsWith(getLocalizedPath("/team"))
+                        ? "bg-white text-black"
+                        : "bg-neutral-100 text-neutral-500 group-hover:bg-white group-hover:text-black"
+                    }`}
+                  >
+                    <Icon name="team" size={18} />
+                  </div>
+
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">
+                    {isEnglish ? "Team" : "الفريق"}
+                  </span>
+
+                  {pathname.startsWith(
+                    getLocalizedPath("/team")
+                  ) && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  )}
+                </Link>
+
+                <Link
+                  href={getLocalizedPath("/settings")}
+                  onClick={() => setOpen(false)}
+                  className={`group flex h-[48px] items-center gap-3 rounded-xl px-3 transition-all ${
+                    pathname.startsWith(
+                      getLocalizedPath("/settings")
+                    )
+                      ? "bg-black text-white"
+                      : "text-neutral-600 hover:bg-neutral-100 hover:text-black"
+                  }`}
+                >
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                      pathname.startsWith(
+                        getLocalizedPath("/settings")
+                      )
+                        ? "bg-white text-black"
+                        : "bg-neutral-100 text-neutral-500 group-hover:bg-white group-hover:text-black"
+                    }`}
+                  >
+                    <Icon name="settings" size={18} />
+                  </div>
+
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">
+                    {isEnglish ? "Settings" : "الإعدادات"}
+                  </span>
+
+                  {pathname.startsWith(
+                    getLocalizedPath("/settings")
+                  ) && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  )}
+                </Link>
+              </div>
+            </div>
+          )}
         </nav>
 
         {/* Language */}
@@ -437,8 +616,8 @@ export default function Sidebar() {
                 <Icon name="spark" size={16} />
               </div>
 
-              <span className="flex items-center gap-1.5 text-[9px] font-semibold text-emerald-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span className="flex items-center gap-1.5 text-[9px] font-semibold text-neutral-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-white" />
                 {t("connected")}
               </span>
             </div>
@@ -466,16 +645,29 @@ export default function Sidebar() {
           <div className="relative">
             <div className="flex items-center gap-3 px-2">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black text-xs font-bold text-white">
-                م
+                {userName
+                  ? userName.charAt(0).toUpperCase()
+                  : "U"}
               </div>
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[11px] font-bold text-black">
-                  {t("adminAccount")}
+                  {loadingAccount
+                    ? "..."
+                    : userName ||
+                      (isEnglish ? "User" : "المستخدم")}
                 </p>
 
                 <p className="mt-0.5 truncate text-[9px] text-neutral-400">
-                  Owner
+                  {isOwner
+                    ? isEnglish
+                      ? "Owner"
+                      : "مالك"
+                    : role === "employee"
+                      ? isEnglish
+                        ? "Employee"
+                        : "موظف"
+                      : ""}
                 </p>
               </div>
 
@@ -486,7 +678,9 @@ export default function Sidebar() {
                     ? "Account options"
                     : "خيارات الحساب"
                 }
-                onClick={() => setAccountOpen((value) => !value)}
+                onClick={() =>
+                  setAccountOpen((value) => !value)
+                }
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-neutral-100 hover:text-black"
               >
                 ⋯
@@ -525,4 +719,3 @@ export default function Sidebar() {
     </>
   );
 }
-
