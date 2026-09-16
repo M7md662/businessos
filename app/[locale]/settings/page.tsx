@@ -37,6 +37,11 @@ export default function SettingsPage() {
   const [isOwner, setIsOwner] = useState(false);
   const [companyId, setCompanyId] = useState("");
 
+    const [whatsappStatus, setWhatsappStatus] =
+      useState<"connected" | "disconnected" | "error">("disconnected");
+
+    const [whatsappPhone, setWhatsappPhone] = useState("");
+
   const [replyMode, setReplyMode] =
     useState<ReplyMode>("manual");
   const [savingReplyMode, setSavingReplyMode] =
@@ -274,6 +279,27 @@ export default function SettingsPage() {
 
       if (membership?.company_id) {
         setCompanyId(membership.company_id);
+
+          const { data: whatsappConnection, error: whatsappError } =
+            await supabase
+              .from("whatsapp_connections")
+              .select("status, display_phone_number")
+              .eq("company_id", membership.company_id)
+              .maybeSingle();
+
+          if (whatsappError) {
+            console.error(
+              "Failed to load WhatsApp connection:",
+              whatsappError
+            );
+          } else if (whatsappConnection) {
+            setWhatsappStatus(
+              whatsappConnection.status || "disconnected"
+            );
+            setWhatsappPhone(
+              whatsappConnection.display_phone_number || ""
+            );
+          }
 
         const { data: company } = await supabase
           .from("companies")
@@ -700,19 +726,39 @@ export default function SettingsPage() {
 
                   <div className="grid gap-4 lg:grid-cols-2">
                     <IntegrationCard
-                      icon={
-                        <MessageCircle
-                          className="h-5 w-5"
-                          strokeWidth={1.8}
-                        />
-                      }
-                      title={text.whatsapp}
-                      description={text.whatsappDescription}
-                      note={text.whatsappNote}
-                      status={text.notConnected}
-                      buttonText={text.configure}
-                      isEnglish={isEnglish}
-                    />
+                        icon={
+                          <MessageCircle
+                            className="h-5 w-5"
+                            strokeWidth={1.8}
+                          />
+                        }
+                        title={text.whatsapp}
+                        description={text.whatsappDescription}
+                        note={
+                          whatsappPhone
+                            ? whatsappPhone
+                            : text.whatsappNote
+                        }
+                        status={
+                          whatsappStatus === "connected"
+                            ? text.connected
+                            : whatsappStatus === "error"
+                              ? "Error"
+                              : text.notConnected
+                        }
+                        buttonText={text.configure}
+                        isEnglish={isEnglish}
+                        disabled={!isOwner}
+                        onConfigure={() => {
+                          if (!isOwner) return;
+
+                          alert(
+                            isEnglish
+                              ? "WhatsApp connection setup will be added here."
+                              : "???? ????? ????? ????? WhatsApp ???."
+                          );
+                        }}
+                      />
 
                     <IntegrationCard
                       icon={
@@ -1156,22 +1202,26 @@ function ReplyModeCard({
 }
 
 function IntegrationCard({
-  icon,
-  title,
-  description,
-  note,
-  status,
-  buttonText,
-  isEnglish,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  note: string;
-  status: string;
-  buttonText: string;
-  isEnglish: boolean;
-}) {
+    icon,
+    title,
+    description,
+    note,
+    status,
+    buttonText,
+    isEnglish,
+    disabled = false,
+    onConfigure,
+  }: {
+    icon: React.ReactNode;
+    title: string;
+    description: string;
+    note: string;
+    status: string;
+    buttonText: string;
+    isEnglish: boolean;
+    disabled?: boolean;
+    onConfigure?: () => void;
+  }) {
   return (
     <div className="rounded-[20px] border border-neutral-100 bg-[#fafafa] p-5">
       <div className="flex items-start justify-between gap-4">

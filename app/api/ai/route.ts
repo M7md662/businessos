@@ -278,6 +278,75 @@ FAQ:
 ${faq || "Not available"}
 `;
 
+    let customerResult = "";
+
+    const customerQuestion =
+      message.includes("customer") ||
+      message.includes("client") ||
+      message.includes("عميل") ||
+      message.includes("العميل");
+
+    if (customerQuestion) {
+      const searchValue = message
+        .replace(/what\s+is\s+the\s+data\s+of/gi, "")
+        .replace(/what\s+is\s+the\s+information\s+of/gi, "")
+        .replace(/what\s+is\s+the\s+customer\s+data\s+of/gi, "")
+        .replace(/customer/gi, "")
+        .replace(/customers/gi, "")
+        .replace(/client/gi, "")
+        .replace(/clients/gi, "")
+        .replace(/data/gi, "")
+        .replace(/information/gi, "")
+        .replace(/about/gi, "")
+        .replace(/ما\s*/g, "")
+        .replace(/بيانات/g, "")
+        .replace(/معلومات/g, "")
+        .replace(/العميل\s+(?=\S)/g, "")
+        .replace(/^عميل\s+(?=\S)/g, "")
+        .replace(/عن/g, "")
+        .replace(/حول/g, "")
+        .replace(/اريد/g, "")
+        .replace(/أريد/g, "")
+        .replace(/[?]/g, "")
+        .trim();
+
+      const searchTerms = searchValue
+        .split(/\s+/)
+        .filter((term) => term.length >= 2);
+
+      console.log(
+        "BUSINESSOS CRM SEARCH TERMS:",
+        JSON.stringify(searchTerms)
+      );
+
+      if (searchTerms.length > 0) {
+        const orConditions = searchTerms.flatMap((term) => [
+          `name.ilike.%${term}%`,
+          `phone.ilike.%${term}%`,
+          `email.ilike.%${term}%`,
+        ]);
+
+        const { data: customers, error: customerError } =
+          await supabase
+            .from("customers")
+            .select("id, name, phone, email, created_at")
+            .eq("company_id", companyId)
+            .or(orConditions.join(","))
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+        if (customerError) {
+          throw customerError;
+        }
+
+        customerResult = JSON.stringify(customers || []);
+
+        console.log(
+          "BUSINESSOS CRM CUSTOMER RESULT:",
+          customerResult
+        );
+      }
+    }
     const groq = new Groq({
       apiKey,
     });
@@ -286,19 +355,19 @@ ${faq || "Not available"}
       locale === "en"
         ? `You are the AI assistant inside BusinessOS.
 
-Your job is to answer questions using ONLY the knowledge base of the current company.
+Your job is to answer questions using the knowledge base and CRM customer data of the current company.
 
 Rules:
 
-1. Use only information contained in the company knowledge base.
+1. Use information from the company knowledge base when answering company information questions. For customer questions, use the CRM customer data provided below.
 
-2. Never invent company information.
+2. Never invent company or customer information. If CRM customer data is provided, use it as the source of truth for customer questions.
 
 3. Never use information from another company.
 
 4. Never assume the company name is BusinessOS.
 
-5. If the requested information is not available, clearly say:
+5. If the requested information is not available in the knowledge base or CRM data, clearly say:
 
 "This information is not available in the company's knowledge base."
 
@@ -319,13 +388,13 @@ ${knowledgeText}`
 
 1. استخدم المعلومات الموجودة في قاعدة المعرفة فقط.
 
-2. لا تخترع أي معلومات عن الشركة.
+2. لا تخترع أي معلومات عن الشركة أو العملاء. إذا كانت بيانات العميل موجودة في CRM فاستخدمها كمصدر أساسي.
 
 3. لا تستخدم معلومات من شركة أخرى.
 
 4. لا تفترض أن اسم الشركة هو BusinessOS.
 
-5. إذا كانت المعلومة المطلوبة غير موجودة قل بوضوح:
+5. إذا كانت المعلومة المطلوبة غير موجودة في قاعدة المعرفة أو بيانات CRM قل بوضوح:
 
 "هذه المعلومة غير موجودة في قاعدة المعرفة الخاصة بالشركة."
 
@@ -345,7 +414,7 @@ ${knowledgeText}`;
         messages: [
           {
             role: "system",
-            content: systemPrompt,
+            content: systemPrompt + "`n`nCRM customer result:`n" + (customerResult || "No customer search result."),
           },
           {
             role: "user",
@@ -382,3 +451,17 @@ ${knowledgeText}`;
     );
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
