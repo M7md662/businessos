@@ -310,9 +310,32 @@ ${faq || "Not available"}
         .replace(/[?]/g, "")
         .trim();
 
+      const phoneMatch = searchValue.match(/\+?\d[\d\s-]{7,}\d/);
+      const emailMatch = searchValue.match(
+        /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
+      );
+
+      const phoneSearch = phoneMatch
+        ? phoneMatch[0].replace(/[\s-]/g, "")
+        : "";
+
+      const emailSearch = emailMatch
+        ? emailMatch[0].trim()
+        : "";
+
       const searchTerms = searchValue
         .split(/\s+/)
         .filter((term) => term.length >= 2);
+
+      console.log(
+        "BUSINESSOS CRM PHONE SEARCH:",
+        JSON.stringify(phoneSearch)
+      );
+
+      console.log(
+        "BUSINESSOS CRM EMAIL SEARCH:",
+        JSON.stringify(emailSearch)
+      );
 
       console.log(
         "BUSINESSOS CRM SEARCH TERMS:",
@@ -322,9 +345,15 @@ ${faq || "Not available"}
       if (searchTerms.length > 0) {
         const orConditions = searchTerms.flatMap((term) => [
           `name.ilike.%${term}%`,
-          `phone.ilike.%${term}%`,
-          `email.ilike.%${term}%`,
         ]);
+
+        if (phoneSearch) {
+          orConditions.push(`phone.ilike.%${phoneSearch}%`);
+        }
+
+        if (emailSearch) {
+          orConditions.push(`email.ilike.%${emailSearch}%`);
+        }
 
         const { data: customers, error: customerError } =
           await supabase
@@ -345,6 +374,90 @@ ${faq || "Not available"}
           "BUSINESSOS CRM CUSTOMER RESULT:",
           customerResult
         );
+
+        const customerIds = (customers || []).map(
+          (customer) => customer.id
+        );
+
+        if (customerIds.length > 0) {
+          const { data: customerOrders, error: ordersError } =
+            await supabase
+              .from("orders")
+              .select(
+                "id, customer_id, customer_name, total, status, notes, service, created_at"
+              )
+              .eq("company_id", companyId)
+              .in("customer_id", customerIds)
+              .order("created_at", { ascending: false })
+              .limit(20);
+
+          if (ordersError) {
+            throw ordersError;
+          }
+
+          customerResult = JSON.stringify({
+            customers: customers || [],
+            orders: customerOrders || [],
+          });
+
+          console.log(
+            "BUSINESSOS CRM CUSTOMER ORDERS RESULT:",
+            JSON.stringify(customerOrders || [])
+          );
+
+          const { data: customerTasks, error: tasksError } =
+            await supabase
+              .from("tasks")
+              .select(
+                "id, customer_id, title, description, status, priority, due_date, created_at"
+              )
+              .eq("company_id", companyId)
+              .in("customer_id", customerIds)
+              .order("created_at", { ascending: false })
+              .limit(20);
+
+          if (tasksError) {
+            throw tasksError;
+          }
+
+          customerResult = JSON.stringify({
+            customers: customers || [],
+            orders: customerOrders || [],
+            tasks: customerTasks || [],
+          });
+
+          console.log(
+            "BUSINESSOS CRM CUSTOMER TASKS RESULT:",
+            JSON.stringify(customerTasks || [])
+          );
+
+          const { data: customerConversations, error: conversationsError } =
+            await supabase
+              .from("conversations")
+              .select(
+                "id, customer_id, customer_name, channel, status, last_message, created_at, updated_at, last_message_at, ai_summary, ai_intent, ai_priority, ai_is_lead, ai_recommended_action, ai_reason"
+              )
+              .eq("company_id", companyId)
+              .in("customer_id", customerIds)
+              .order("last_message_at", { ascending: false })
+              .limit(20);
+
+          if (conversationsError) {
+            throw conversationsError;
+          }
+
+          customerResult = JSON.stringify({
+            customers: customers || [],
+            orders: customerOrders || [],
+            tasks: customerTasks || [],
+            conversations: customerConversations || [],
+          });
+
+          console.log(
+            "BUSINESSOS CRM CUSTOMER CONVERSATIONS RESULT:",
+            JSON.stringify(customerConversations || [])
+          );
+        }
       }
     }
     const groq = new Groq({
@@ -451,6 +564,8 @@ ${knowledgeText}`;
     );
   }
 }
+
+
 
 
 
