@@ -20,6 +20,15 @@ type Message = {
   created_at: string;
 };
 
+type ProposedAction = {
+  type: "create_task";
+  title: string;
+  description: string;
+  due_date: string;
+  priority: string;
+  status: string;
+};
+
 type AccessState = "loading" | "allowed" | "denied" | "error";
 
 const STORAGE_KEY_PREFIX = "businessos-ai-messages";
@@ -29,6 +38,8 @@ export default function AIPage() {
   const isEnglish = locale === "en";
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [proposedAction, setProposedAction] =
+    useState<ProposedAction | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [accessState, setAccessState] =
@@ -222,7 +233,73 @@ export default function AIPage() {
     }
   }
 
-  async function sendMessage(
+  async function confirmProposedAction() {
+    if (!proposedAction) {
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+
+    try {
+      if (proposedAction.type === "create_task") {
+        const response = await fetch("/api/ai/actions/task", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: proposedAction.title,
+            description: proposedAction.description,
+            due_date: proposedAction.due_date,
+            priority: proposedAction.priority,
+            status: proposedAction.status,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              (isEnglish
+                ? "Failed to create the task."
+                : "??? ????? ??????.")
+          );
+        }
+
+        const successMessage: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: isEnglish
+            ? "The task was created successfully."
+            : "تم إنشاء المهمة بنجاح.",
+          created_at: new Date().toISOString(),
+        };
+
+        setMessages((current) => [
+          ...current,
+          successMessage,
+        ]);
+
+        setProposedAction(null);
+      }
+    } catch (err) {
+      console.error("AI action confirmation error:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEnglish
+            ? "Failed to execute the action."
+            : "??? ????? ???????."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+async function sendMessage(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
@@ -278,6 +355,12 @@ export default function AIPage() {
         content: data.reply,
         created_at: new Date().toISOString(),
       };
+
+        if (data.action) {
+          setProposedAction(data.action);
+        } else {
+          setProposedAction(null);
+        }
 
       setMessages((current) => [
         ...current,
@@ -441,7 +524,104 @@ export default function AIPage() {
             </div>
           )}
 
-          <form
+          {proposedAction && (
+              <div className="border-t border-black/10 bg-black/[0.02] p-4">
+                <div className="rounded-2xl border border-black/10 bg-white p-4">
+                  <div className="mb-4">
+                    <p className="text-sm font-semibold">
+                      {isEnglish
+                        ? "Proposed action"
+                        : "إجراء مقترح"}
+                    </p>
+
+                    <p className="mt-1 text-xs text-black/50">
+                      {isEnglish
+                        ? "Review the details before confirming."
+                        : "راجع تفاصيل المهمة قبل تأكيد إنشائها"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <p className="text-xs text-black/50">
+                        {isEnglish ? "Title" : "العنوان"}
+                      </p>
+                      <p className="mt-1 font-medium">
+                        {proposedAction.title}
+                      </p>
+                    </div>
+
+                    {proposedAction.description && (
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish ? "Description" : "الوصف"}
+                        </p>
+                        <p className="mt-1">
+                          {proposedAction.description}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish ? "Due date" : "تاريخ الاستحقاق"}
+                        </p>
+                        <p className="mt-1">
+                          {proposedAction.due_date || "-"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish ? "Priority" : "الأولوية"}
+                        </p>
+                        <p className="mt-1">
+                          {proposedAction.priority}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish ? "Status" : "الحالة"}
+                        </p>
+                        <p className="mt-1">
+                          {proposedAction.status}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={confirmProposedAction}
+                      disabled={loading}
+                      className="rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {loading
+                        ? isEnglish
+                          ? "Creating..."
+                          : "جار الإنشاء..."
+                        : isEnglish
+                          ? "Confirm and create"
+                          : "تأكيد وإنشاء"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setProposedAction(null)}
+                      disabled={loading}
+                      className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-medium transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isEnglish ? "Cancel" : "إلغاء"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <form
             onSubmit={sendMessage}
             className="border-t border-black/10 p-4"
           >

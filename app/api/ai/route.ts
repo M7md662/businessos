@@ -35,7 +35,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const message = String(body.message || "").trim();
     const locale = body.locale === "en" ? "en" : "ar";
-
     if (!message) {
       return NextResponse.json(
         {
@@ -301,8 +300,8 @@ ${faq || "Not available"}
     const customerQuestion =
       message.includes("customer") ||
       message.includes("client") ||
-      message.includes("عميل") ||
-      message.includes("العميل");
+      message.includes(String.fromCodePoint(0x0639,0x0645,0x064a,0x0644)) ||
+      message.includes(String.fromCodePoint(0x0627,0x0644,0x0639,0x0645,0x064a,0x0644));
 
     const customerSummaryMode =
       customerQuestion && !recommendationRequested;
@@ -481,6 +480,64 @@ ${faq || "Not available"}
         }
       }
     }
+
+      const createTaskRequested =
+      message.toLowerCase().includes("create task") ||
+      message.toLowerCase().includes("add task") ||
+      message.toLowerCase().includes("new task") ||
+      message.includes(String.fromCodePoint(0x0623,0x0646,0x0634,0x0626,0x0020,0x0645,0x0647,0x0645,0x0629)) ||
+      message.includes(String.fromCodePoint(0x0627,0x0639,0x0645,0x0644,0x0020,0x0645,0x0647,0x0645,0x0629)) ||
+      message.includes(String.fromCodePoint(0x0623,0x0636,0x0641,0x0020,0x0645,0x0647,0x0645,0x0629));
+
+    let proposedAction = null;
+
+    if (createTaskRequested) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      let taskTitle = message
+        .replace(/create task/gi, "")
+        .replace(/add task/gi, "")
+        .replace(/new task/gi, "")
+        .replace(/[?]/g, "")
+        .trim();
+
+      if (!taskTitle) {
+        taskTitle =
+          locale === "en"
+            ? "New task"
+            : String.fromCodePoint(
+                0x0645,0x0647,0x0645,0x0629,0x0020,
+                0x062c,0x062f,0x064a,0x062f,0x0629
+              );
+      }
+
+      proposedAction = {
+        type: "create_task",
+        title: taskTitle,
+        description: "",
+        due_date: tomorrow.toISOString().slice(0, 10),
+        priority: String.fromCodePoint(
+          0x0645,0x062a,0x0648,0x0633,0x0637,0x0629
+        ),
+        status: String.fromCodePoint(
+          0x062c,0x062f,0x064a,0x062f,0x0629
+        ),
+      };
+    }
+
+
+      if (proposedAction) {
+        return NextResponse.json({
+          reply:
+            locale === "en"
+              ? "I prepared the task below for your confirmation."
+              : "جهزت المهمة التالية لتأكيدك قبل إنشائها",
+          plan: plan.name,
+          action: proposedAction,
+        });
+      }
+
     // CUSTOMER_SUMMARY_DETERMINISTIC
     if (customerSummaryMode && customerResult) {
       try {
@@ -862,7 +919,7 @@ Do not add recommendation or action sections.`
             : "???????? ??? ???????? ??????. ???? ????? ???????? ??? ??? ????? ????? ?? ?????? CRM ??????? ?????? ?????? ????????? ???????."
           : "";
 
-    const completion =
+  const completion =
       await groq.chat.completions.create({
         model: "openai/gpt-oss-120b",
         messages: [
@@ -891,6 +948,7 @@ Do not add recommendation or action sections.`
     return NextResponse.json({
       reply,
       plan: plan.name,
+      action: proposedAction,
     });
   } catch (error) {
     console.error("AI API Error:", error);
