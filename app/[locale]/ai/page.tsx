@@ -21,7 +21,7 @@ type Message = {
 };
 
 type ProposedAction = {
-  type: "create_task" | "create_order";
+  type: "create_task" | "create_order" | "create_customer";
   title?: string;
   description?: string;
   due_date?: string;
@@ -32,6 +32,9 @@ type ProposedAction = {
   service?: string;
   total?: number;
   notes?: string;
+  name?: string;
+  phone?: string | null;
+  email?: string | null;
 };
 
 type AccessState = "loading" | "allowed" | "denied" | "error";
@@ -80,7 +83,10 @@ export default function AIPage() {
 
   useEffect(() => {
     if (accessState === "allowed") {
-      localStorage.setItem(storageKey, JSON.stringify(messages));
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify(messages)
+      );
     }
   }, [messages, accessState, storageKey]);
 
@@ -250,21 +256,73 @@ export default function AIPage() {
     setLoading(true);
 
     try {
+      if (proposedAction.type === "create_customer") {
+        const response = await fetch(
+          "/api/ai/actions/customer",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name:
+                proposedAction.name ||
+                proposedAction.customer_name ||
+                "",
+              phone: proposedAction.phone || "",
+              email: proposedAction.email || "",
+              notes: proposedAction.notes || "",
+            }),
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              (isEnglish
+                ? "Failed to create the customer."
+                : "فشل إنشاء العميل.")
+          );
+        }
+
+        const successMessage: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: isEnglish
+            ? "The customer was created successfully."
+            : "تم إنشاء العميل بنجاح.",
+          created_at: new Date().toISOString(),
+        };
+
+        setMessages((current) => [
+          ...current,
+          successMessage,
+        ]);
+
+        setProposedAction(null);
+        return;
+      }
+
       if (proposedAction.type === "create_task") {
-        const response = await fetch("/api/ai/actions/task", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            title: proposedAction.title,
-            description: proposedAction.description,
-            due_date: proposedAction.due_date,
-            priority: proposedAction.priority,
-            status: proposedAction.status,
-            customer_id: proposedAction.customer_id,
-          }),
-        });
+        const response = await fetch(
+          "/api/ai/actions/task",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: proposedAction.title,
+              description: proposedAction.description,
+              due_date: proposedAction.due_date,
+              priority: proposedAction.priority,
+              status: proposedAction.status,
+              customer_id: proposedAction.customer_id,
+            }),
+          }
+        );
 
         const data = await response.json();
 
@@ -292,23 +350,27 @@ export default function AIPage() {
         ]);
 
         setProposedAction(null);
+        return;
       }
 
       if (proposedAction.type === "create_order") {
-        const response = await fetch("/api/ai/actions/order", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            customer_id: proposedAction.customer_id,
-            customer_name: proposedAction.customer_name,
-            service: proposedAction.service,
-            total: proposedAction.total,
-            status: proposedAction.status,
-            notes: proposedAction.notes,
-          }),
-        });
+        const response = await fetch(
+          "/api/ai/actions/order",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              customer_id: proposedAction.customer_id,
+              customer_name: proposedAction.customer_name,
+              service: proposedAction.service,
+              total: proposedAction.total,
+              status: proposedAction.status,
+              notes: proposedAction.notes,
+            }),
+          }
+        );
 
         const data = await response.json();
 
@@ -338,7 +400,10 @@ export default function AIPage() {
         setProposedAction(null);
       }
     } catch (err) {
-      console.error("AI action confirmation error:", err);
+      console.error(
+        "AI action confirmation error:",
+        err
+      );
 
       setError(
         err instanceof Error
@@ -591,33 +656,94 @@ export default function AIPage() {
               <div className="rounded-2xl border border-black/10 bg-white p-4">
                 <div className="mb-4">
                   <p className="text-sm font-semibold">
-                    {proposedAction.type === "create_order"
+                    {proposedAction.type === "create_customer"
                       ? isEnglish
-                        ? "Proposed order"
-                        : "طلب مقترح"
-                      : isEnglish
-                        ? "Proposed action"
-                        : "إجراء مقترح"}
+                        ? "Proposed customer"
+                        : "عميل مقترح"
+                      : proposedAction.type === "create_order"
+                        ? isEnglish
+                          ? "Proposed order"
+                          : "طلب مقترح"
+                        : isEnglish
+                          ? "Proposed task"
+                          : "مهمة مقترحة"}
                   </p>
 
                   <p className="mt-1 text-xs text-black/50">
-                    {proposedAction.type === "create_order"
+                    {proposedAction.type === "create_customer"
                       ? isEnglish
-                        ? "Review the order details before confirming."
-                        : "راجع تفاصيل الطلب قبل تأكيد إنشائه."
-                      : isEnglish
-                        ? "Review the task details before confirming."
-                        : "راجع تفاصيل المهمة قبل تأكيد إنشائها."}
+                        ? "Review the customer details before confirming."
+                        : "راجع بيانات العميل قبل تأكيد إنشائه."
+                      : proposedAction.type === "create_order"
+                        ? isEnglish
+                          ? "Review the order details before confirming."
+                          : "راجع تفاصيل الطلب قبل تأكيد إنشائه."
+                        : isEnglish
+                          ? "Review the task details before confirming."
+                          : "راجع تفاصيل المهمة قبل تأكيد إنشائها."}
                   </p>
                 </div>
 
-                {proposedAction.type === "create_order" ? (
+                {proposedAction.type === "create_customer" ? (
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <p className="text-xs text-black/50">
+                        {isEnglish ? "Name" : "الاسم"}
+                      </p>
+
+                      <p className="mt-1 font-medium">
+                        {proposedAction.name ||
+                          proposedAction.customer_name ||
+                          "-"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-black/50">
+                        {isEnglish ? "Phone" : "الهاتف"}
+                      </p>
+
+                      <p className="mt-1 font-medium">
+                        {proposedAction.phone || "-"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-black/50">
+                        {isEnglish
+                          ? "Email"
+                          : "البريد الإلكتروني"}
+                      </p>
+
+                      <p className="mt-1 font-medium">
+                        {proposedAction.email || "-"}
+                      </p>
+                    </div>
+
+                    {proposedAction.notes && (
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish
+                            ? "Notes"
+                            : "ملاحظات"}
+                        </p>
+
+                        <p className="mt-1">
+                          {proposedAction.notes}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : proposedAction.type === "create_order" ? (
                   <div className="space-y-3 text-sm">
                     {proposedAction.customer_name && (
                       <div>
                         <p className="text-xs text-black/50">
-                          {isEnglish ? "Customer" : "العميل"}
+                          {isEnglish
+                            ? "Customer"
+                            : "العميل"}
                         </p>
+
                         <p className="mt-1 font-medium">
                           {proposedAction.customer_name}
                         </p>
@@ -626,8 +752,11 @@ export default function AIPage() {
 
                     <div>
                       <p className="text-xs text-black/50">
-                        {isEnglish ? "Service" : "الخدمة"}
+                        {isEnglish
+                          ? "Service"
+                          : "الخدمة"}
                       </p>
+
                       <p className="mt-1 font-medium">
                         {proposedAction.service || "-"}
                       </p>
@@ -636,22 +765,32 @@ export default function AIPage() {
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <p className="text-xs text-black/50">
-                          {isEnglish ? "Total" : "الإجمالي"}
+                          {isEnglish
+                            ? "Total"
+                            : "الإجمالي"}
                         </p>
+
                         <p className="mt-1 font-medium">
                           {Number(
                             proposedAction.total || 0
                           ).toLocaleString(
-                            isEnglish ? "en-US" : "ar-EG"
+                            isEnglish
+                              ? "en-US"
+                              : "ar-EG"
                           )}{" "}
-                          {isEnglish ? "EGP" : "جنيه"}
+                          {isEnglish
+                            ? "EGP"
+                            : "جنيه"}
                         </p>
                       </div>
 
                       <div>
                         <p className="text-xs text-black/50">
-                          {isEnglish ? "Status" : "الحالة"}
+                          {isEnglish
+                            ? "Status"
+                            : "الحالة"}
                         </p>
+
                         <p className="mt-1 font-medium">
                           {proposedAction.status || "-"}
                         </p>
@@ -661,8 +800,11 @@ export default function AIPage() {
                     {proposedAction.notes && (
                       <div>
                         <p className="text-xs text-black/50">
-                          {isEnglish ? "Notes" : "ملاحظات"}
+                          {isEnglish
+                            ? "Notes"
+                            : "ملاحظات"}
                         </p>
+
                         <p className="mt-1">
                           {proposedAction.notes}
                         </p>
@@ -673,8 +815,11 @@ export default function AIPage() {
                   <div className="space-y-3 text-sm">
                     <div>
                       <p className="text-xs text-black/50">
-                        {isEnglish ? "Title" : "العنوان"}
+                        {isEnglish
+                          ? "Title"
+                          : "العنوان"}
                       </p>
+
                       <p className="mt-1 font-medium">
                         {proposedAction.title}
                       </p>
@@ -683,8 +828,11 @@ export default function AIPage() {
                     {proposedAction.customer_name && (
                       <div>
                         <p className="text-xs text-black/50">
-                          {isEnglish ? "Customer" : "العميل"}
+                          {isEnglish
+                            ? "Customer"
+                            : "العميل"}
                         </p>
+
                         <p className="mt-1 font-medium">
                           {proposedAction.customer_name}
                         </p>
@@ -694,8 +842,11 @@ export default function AIPage() {
                     {proposedAction.description && (
                       <div>
                         <p className="text-xs text-black/50">
-                          {isEnglish ? "Description" : "الوصف"}
+                          {isEnglish
+                            ? "Description"
+                            : "الوصف"}
                         </p>
+
                         <p className="mt-1">
                           {proposedAction.description}
                         </p>
@@ -709,6 +860,7 @@ export default function AIPage() {
                             ? "Due date"
                             : "تاريخ الاستحقاق"}
                         </p>
+
                         <p className="mt-1">
                           {proposedAction.due_date || "-"}
                         </p>
@@ -720,6 +872,7 @@ export default function AIPage() {
                             ? "Priority"
                             : "الأولوية"}
                         </p>
+
                         <p className="mt-1">
                           {proposedAction.priority || "-"}
                         </p>
@@ -727,8 +880,11 @@ export default function AIPage() {
 
                       <div>
                         <p className="text-xs text-black/50">
-                          {isEnglish ? "Status" : "الحالة"}
+                          {isEnglish
+                            ? "Status"
+                            : "الحالة"}
                         </p>
+
                         <p className="mt-1">
                           {proposedAction.status || "-"}
                         </p>
@@ -748,22 +904,32 @@ export default function AIPage() {
                       ? isEnglish
                         ? "Creating..."
                         : "جاري الإنشاء..."
-                      : proposedAction.type === "create_order"
+                      : proposedAction.type ===
+                          "create_customer"
                         ? isEnglish
-                          ? "Confirm and create order"
-                          : "تأكيد وإنشاء الطلب"
-                        : isEnglish
-                          ? "Confirm and create task"
-                          : "تأكيد وإنشاء المهمة"}
+                          ? "Confirm and create customer"
+                          : "تأكيد وإنشاء العميل"
+                        : proposedAction.type ===
+                            "create_order"
+                          ? isEnglish
+                            ? "Confirm and create order"
+                            : "تأكيد وإنشاء الطلب"
+                          : isEnglish
+                            ? "Confirm and create task"
+                            : "تأكيد وإنشاء المهمة"}
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setProposedAction(null)}
+                    onClick={() =>
+                      setProposedAction(null)
+                    }
                     disabled={loading}
                     className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-medium transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isEnglish ? "Cancel" : "إلغاء"}
+                    {isEnglish
+                      ? "Cancel"
+                      : "إلغاء"}
                   </button>
                 </div>
               </div>
@@ -791,7 +957,9 @@ export default function AIPage() {
 
               <button
                 type="submit"
-                disabled={loading || !input.trim()}
+                disabled={
+                  loading || !input.trim()
+                }
                 className="flex items-center gap-2 rounded-2xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading ? (
@@ -801,7 +969,9 @@ export default function AIPage() {
                 )}
 
                 <span className="hidden sm:inline">
-                  {isEnglish ? "Send" : "إرسال"}
+                  {isEnglish
+                    ? "Send"
+                    : "إرسال"}
                 </span>
               </button>
             </div>

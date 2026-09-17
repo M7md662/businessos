@@ -39,7 +39,8 @@ export async function POST(req: Request) {
     if (!message) {
       return NextResponse.json(
         {
-          error: locale === "en" ? "Message is empty." : "الرسالة فارغة.",
+          error:
+            locale === "en" ? "Message is empty." : "الرسالة فارغة.",
         },
         { status: 400 }
       );
@@ -82,13 +83,14 @@ export async function POST(req: Request) {
 
     const companyId = membership.company_id;
 
-    const { data: subscriptions, error: subscriptionError } = await supabase
-      .from("subscriptions")
-      .select("plan_id, status, end_date, created_at")
-      .eq("company_id", companyId)
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1);
+    const { data: subscriptions, error: subscriptionError } =
+      await supabase
+        .from("subscriptions")
+        .select("plan_id, status, end_date, created_at")
+        .eq("company_id", companyId)
+        .eq("status", "active")
+        .order("created_at", { ascending: false })
+        .limit(1);
 
     if (subscriptionError) {
       console.error("Subscription lookup error:", subscriptionError);
@@ -225,21 +227,27 @@ export async function POST(req: Request) {
 
     const knowledgeText = `
 Company name:
+
 ${companyName || "Not available"}
 
 Business information:
+
 ${businessInfo || "Not available"}
 
 Services and products:
+
 ${services || "Not available"}
 
 Pricing:
+
 ${pricing || "Not available"}
 
 Policies:
+
 ${policies || "Not available"}
 
 FAQ:
+
 ${faq || "Not available"}
 `;
 
@@ -295,7 +303,9 @@ ${faq || "Not available"}
         .replace(/[?؟]/g, "")
         .trim();
 
-      const phoneMatch = searchValue.match(/\+?\d[\d\s-]{7,}\d/);
+      const phoneMatch = searchValue.match(
+        /\+?\d[\d\s-]{7,}\d/
+      );
 
       const emailMatch = searchValue.match(
         /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
@@ -305,7 +315,9 @@ ${faq || "Not available"}
         ? phoneMatch[0].replace(/[\s-]/g, "")
         : "";
 
-      const emailSearch = emailMatch ? emailMatch[0].trim() : "";
+      const emailSearch = emailMatch
+        ? emailMatch[0].trim()
+        : "";
 
       const searchTerms = searchValue
         .split(/\s+/)
@@ -332,20 +344,27 @@ ${faq || "Not available"}
         ]);
 
         if (phoneSearch) {
-          orConditions.push(`phone.ilike.%${phoneSearch}%`);
+          orConditions.push(
+            `phone.ilike.%${phoneSearch}%`
+          );
         }
 
         if (emailSearch) {
-          orConditions.push(`email.ilike.%${emailSearch}%`);
+          orConditions.push(
+            `email.ilike.%${emailSearch}%`
+          );
         }
 
-        const { data: customers, error: customerError } = await supabase
-          .from("customers")
-          .select("id, name, phone, email, created_at")
-          .eq("company_id", companyId)
-          .or(orConditions.join(","))
-          .order("created_at", { ascending: false })
-          .limit(10);
+        const { data: customers, error: customerError } =
+          await supabase
+            .from("customers")
+            .select(
+              "id, name, phone, email, created_at"
+            )
+            .eq("company_id", companyId)
+            .or(orConditions.join(","))
+            .order("created_at", { ascending: false })
+            .limit(10);
 
         if (customerError) {
           throw customerError;
@@ -452,32 +471,13 @@ ${faq || "Not available"}
 
     /*
      * Normalize Arabic text for command detection.
-     *
-     * Example:
-     * أنشئ -> انشئ
-     * أولوية -> اولوية
      */
-
     const normalizedMessage = message
       .normalize("NFD")
       .replace(/[\u0300-\u036f\u064B-\u065F\u0670]/g, "")
       .replace(/[?؟]/g, "")
       .replace(/\s+/g, " ")
       .trim();
-
-    /*
-     * Additional Arabic command normalization.
-     *
-     * This is important because:
-     *
-     * نشئ
-     *
-     * becomes:
-     *
-     * نشي
-     *
-     * after Unicode normalization.
-     */
 
     const commandMessage = normalizedMessage
       .replace(/[أإآ]/g, "ا")
@@ -487,8 +487,18 @@ ${faq || "Not available"}
       .replace(/ئ/g, "ي")
       .trim();
 
+    const createCustomerRequested =
+      /(?:create|add|new)\s+(?:customer|client)/i.test(
+        normalizedMessage
+      ) ||
+      /(?:انشئ|انشي|نشي|نشئ|اعمل|اضف)\s+(?:عميل|عميله|عميل جديد)/i.test(
+        commandMessage
+      );
+
     const createOrderRequested =
-      /(?:create|add|new)\s+order/i.test(normalizedMessage) ||
+      /(?:create|add|new)\s+order/i.test(
+        normalizedMessage
+      ) ||
       /(?:انشئ|انشي|نشي|نشئ|اعمل|اضف)\s+(?:طلب|اوردر)/i.test(
         commandMessage
       );
@@ -496,7 +506,9 @@ ${faq || "Not available"}
     const createTaskRequested =
       !createOrderRequested &&
       (
-        /(?:create|add|new)\s+task/i.test(normalizedMessage) ||
+        /(?:create|add|new)\s+task/i.test(
+          normalizedMessage
+        ) ||
         /(?:انشئ|انشي|نشي|نشئ|شئ|اعمل|اضف)\s+(?:مهمة|مهمه)/i.test(
           commandMessage
         )
@@ -506,6 +518,7 @@ ${faq || "Not available"}
       message,
       normalizedMessage,
       commandMessage,
+      createCustomerRequested,
       createOrderRequested,
       createTaskRequested,
       customerQuestion,
@@ -513,6 +526,140 @@ ${faq || "Not available"}
     });
 
     let proposedAction: any = null;
+
+    /*
+     * ------------------------------------------------------------
+     * CREATE CUSTOMER
+     * ------------------------------------------------------------
+     */
+
+    if (createCustomerRequested) {
+      let customerName = "";
+      let customerPhone = "";
+      let customerEmail = "";
+
+      const namePatterns = [
+        /(?:اسم\s+العميل|العميل\s+اسمه|اسمه|اسمها)\s*[:\-]?\s*(.+?)(?=\s+(?:ورقم|وهاتف|هاتفه|هاتفها|والبريد|وبريده|بريده|email|phone)\s|$)/i,
+
+        /(?:customer|client)\s+(?:named|name\s+is)\s+(.+?)(?=\s+(?:phone|email)\s|$)/i,
+      ];
+
+      for (const pattern of namePatterns) {
+        const match = message.match(pattern);
+
+        if (match?.[1]) {
+          customerName = match[1]
+            .replace(/[,;]+$/, "")
+            .trim();
+
+          if (customerName) {
+            break;
+          }
+        }
+      }
+
+      /*
+       * Fallback:
+       * أنشئ عميل جديد أحمد محمد 01012345678
+       */
+
+      if (!customerName) {
+        const fallbackName = message
+          .replace(
+            /(?:create|add|new)\s+(?:customer|client)/gi,
+            ""
+          )
+          .replace(
+            /(?:انشئ|انشي|نشي|نشئ|اعمل|اضف)\s+(?:عميل|عميله|عميل جديد)/gi,
+            ""
+          )
+          .replace(
+            /\+?\d[\d\s-]{7,}\d/g,
+            ""
+          )
+          .replace(
+            /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+            ""
+          )
+          .replace(
+            /(?:رقم هاتفه|رقم هاتفها|هاتفه|هاتفها|phone|email|البريد الالكتروني|البريد الإلكتروني|بريده|بريدها)/gi,
+            ""
+          )
+          .replace(/[,;]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        if (fallbackName) {
+          customerName = fallbackName;
+        }
+      }
+
+      /*
+       * ------------------------------------------------------------
+       * CUSTOMER PHONE
+       * ------------------------------------------------------------
+       */
+
+      const phoneMatch = message.match(
+        /(?:رقم هاتفه|رقم هاتفها|هاتفه|هاتفها|برقم|phone|mobile|هاتف|موبايل)\s*[:\-]?\s*(\+?\d[\d\s-]{7,}\d)/i
+      );
+
+      if (phoneMatch?.[1]) {
+        customerPhone = phoneMatch[1]
+          .replace(/[\s-]/g, "")
+          .trim();
+      } else {
+        const standalonePhone = message.match(
+          /\+?\d[\d\s-]{8,}\d/
+        );
+
+        if (standalonePhone?.[0]) {
+          customerPhone = standalonePhone[0]
+            .replace(/[\s-]/g, "")
+            .trim();
+        }
+      }
+
+      /*
+       * ------------------------------------------------------------
+       * CUSTOMER EMAIL
+       * ------------------------------------------------------------
+       */
+
+      const emailMatch = message.match(
+        /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
+      );
+
+      if (emailMatch?.[0]) {
+        customerEmail = emailMatch[0].trim();
+      }
+
+      if (!customerName) {
+        customerName =
+          locale === "en"
+            ? "New customer"
+            : "عميل جديد";
+      }
+
+      proposedAction = {
+        type: "create_customer",
+        name: customerName,
+        phone: customerPhone || null,
+        email: customerEmail || null,
+        notes: "",
+      };
+
+      console.log(
+        "AI CUSTOMER ACTION:",
+        proposedAction
+      );
+    }
+
+    /*
+     * ------------------------------------------------------------
+     * CREATE TASK
+     * ------------------------------------------------------------
+     */
 
     if (createTaskRequested) {
       const tomorrow = new Date();
@@ -523,7 +670,9 @@ ${faq || "Not available"}
 
       if (customerResult) {
         try {
-          const customerData = JSON.parse(customerResult);
+          const customerData = JSON.parse(
+            customerResult
+          );
 
           const customers = Array.isArray(customerData)
             ? customerData
@@ -540,38 +689,38 @@ ${faq || "Not available"}
       }
 
       /*
-       * ------------------------------------------------------------
        * TASK TITLE
-       * ------------------------------------------------------------
        */
 
       let taskTitle = message;
 
-      // Remove English task command.
       taskTitle = taskTitle.replace(
         /(?:create|add|new)\s+task/gi,
         ""
       );
 
-      // Remove Arabic task command.
       taskTitle = taskTitle.replace(
         /(?:أنشئ|انشئ|انشي|نشي|نشئ|اعمل|أعمل|اضف|أضف)\s+(?:مهمة|مهمه)/gi,
         ""
       );
 
-      // Remove question marks.
-      taskTitle = taskTitle.replace(/[?؟]/g, "");
+      taskTitle = taskTitle.replace(
+        /[?؟]/g,
+        ""
+      );
+
       taskTitle = taskTitle.trim();
 
       /*
-       * Remove the customer phrase using the actual customer name.
+       * Remove customer phrase.
        */
 
       if (customerName) {
-        const escapedCustomerName = customerName.replace(
-          /[.*+?^${}()|[\]\\]/g,
-          "\\$&"
-        );
+        const escapedCustomerName =
+          customerName.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+          );
 
         const customerPhraseRegex = new RegExp(
           `(?:للعميل|لدى العميل|للمستخدم)\\s+${escapedCustomerName}`,
@@ -585,9 +734,7 @@ ${faq || "Not available"}
       }
 
       /*
-       * Fallback:
-       * Remove a generic customer phrase even if the CRM did not
-       * return exactly one customer.
+       * Fallback customer phrase.
        */
 
       taskTitle = taskTitle.replace(
@@ -596,9 +743,7 @@ ${faq || "Not available"}
       );
 
       /*
-       * ------------------------------------------------------------
        * REMOVE DUE DATE PHRASES
-       * ------------------------------------------------------------
        */
 
       taskTitle = taskTitle
@@ -612,25 +757,21 @@ ${faq || "Not available"}
         );
 
       /*
-       * ------------------------------------------------------------
        * REMOVE PRIORITY PHRASES
-       * ------------------------------------------------------------
        */
 
       taskTitle = taskTitle
         .replace(
-          /(?:بأولوية|باولوية|اولوية|أولوية|priority)\s*(?::|-)?\s*(?:عالية|عالي|عاليه|high|منخفضة|منخفض|منخفضه|low|متوسطة|متوسط|متوسطه|medium)/gi,
+          /(?:بأولوية|باولوية|اولوية|أولوية|priority)\s*[:\-]?\s*(?:عالية|عالي|عاليه|high|منخفضة|منخفض|منخفضه|low|متوسطة|متوسط|متوسطه|medium)/gi,
           ""
         )
         .replace(
-          /(?:priority)\s*(?::|-)?\s*(?:high|low|medium)/gi,
+          /(?:priority)\s*[:\-]?\s*(?:high|low|medium)/gi,
           ""
         );
 
       /*
-       * ------------------------------------------------------------
        * Remove common leading Arabic connector.
-       * ------------------------------------------------------------
        */
 
       taskTitle = taskTitle
@@ -641,10 +782,8 @@ ${faq || "Not available"}
         .replace(/^ل(?=مراجعة(?:\s|$))/i, "")
         .replace(/^ل(?=إرسال(?:\s|$))/i, "")
         .replace(/^ل(?=ارسال(?:\s|$))/i, "")
-        .replace(/^ل(?=التأكد(?:\s|$))/i, "")
-        .replace(/^ل(?=متابعة(?:\s|$))/i, "");
+        .replace(/^ل(?=التأكد(?:\s|$))/i, "");
 
-      // Remove leftover punctuation/spaces.
       taskTitle = taskTitle
         .replace(/\s{2,}/g, " ")
         .replace(/^[\s،,؛;:-]+/, "")
@@ -659,27 +798,26 @@ ${faq || "Not available"}
       }
 
       /*
-       * ------------------------------------------------------------
        * PRIORITY
-       * ------------------------------------------------------------
        */
 
-      const normalizedPriorityText = normalizedMessage
-        .replace(/[أإآ]/g, "ا")
-        .replace(/ى/g, "ي")
-        .replace(/ة/g, "ه")
-        .replace(/ؤ/g, "و")
-        .replace(/ئ/g, "ي")
-        .replace(/\s+/g, " ")
-        .trim();
+      const normalizedPriorityText =
+        normalizedMessage
+          .replace(/[أإآ]/g, "ا")
+          .replace(/ى/g, "ي")
+          .replace(/ة/g, "ه")
+          .replace(/ؤ/g, "و")
+          .replace(/ئ/g, "ي")
+          .replace(/\s+/g, " ")
+          .trim();
 
       const highPriorityRequested =
-        /(?:باولوية|اولوية|اولوية|priority)\s*(?::|-)?\s*(?:عالية|عالي|عاليه|high)(?:\s|$)/i.test(
+        /(?:باولوية|اولوية|priority)\s*[:\-]?\s*(?:عالية|عالي|عاليه|high)(?:\s|$)/i.test(
           normalizedPriorityText
         );
 
       const lowPriorityRequested =
-        /(?:باولوية|اولوية|priority)\s*(?::|-)?\s*(?:منخفضة|منخفض|منخفضه|low)(?:\s|$)/i.test(
+        /(?:باولوية|اولوية|priority)\s*[:\-]?\s*(?:منخفضة|منخفض|منخفضه|low)(?:\s|$)/i.test(
           normalizedPriorityText
         );
 
@@ -690,15 +828,12 @@ ${faq || "Not available"}
           : "متوسطة";
 
       /*
-       * ------------------------------------------------------------
        * DUE DATE
-       * ------------------------------------------------------------
-       *
-       * Current BusinessOS behavior:
-       * if no explicit date parser is available, default to tomorrow.
        */
 
-      const dueDate = tomorrow.toISOString().slice(0, 10);
+      const dueDate = tomorrow
+        .toISOString()
+        .slice(0, 10);
 
       proposedAction = {
         type: "create_task",
@@ -711,8 +846,17 @@ ${faq || "Not available"}
         customer_name: customerName,
       };
 
-      console.log("AI TASK ACTION:", proposedAction);
+      console.log(
+        "AI TASK ACTION:",
+        proposedAction
+      );
     }
+
+    /*
+     * ------------------------------------------------------------
+     * CREATE ORDER
+     * ------------------------------------------------------------
+     */
 
     if (createOrderRequested) {
       let service = message.trim();
@@ -732,7 +876,8 @@ ${faq || "Not available"}
 
       if (serviceMarkerIndex >= 0) {
         const serviceStart =
-          serviceMarkerIndex + serviceMarker.length;
+          serviceMarkerIndex +
+          serviceMarker.length;
 
         const serviceEnd =
           amountMarkerIndex > serviceStart
@@ -756,7 +901,9 @@ ${faq || "Not available"}
 
       if (customerResult) {
         try {
-          const customerData = JSON.parse(customerResult);
+          const customerData = JSON.parse(
+            customerResult
+          );
 
           const customers = Array.isArray(customerData)
             ? customerData
@@ -801,30 +948,40 @@ ${faq || "Not available"}
     }
 
     /*
-     * If an action was detected, return it immediately.
-     * The AI page will show the confirmation card.
+     * ------------------------------------------------------------
+     * ACTION CONFIRMATION RESPONSE
+     * ------------------------------------------------------------
      */
 
     if (proposedAction) {
+      const isCustomerAction =
+        proposedAction.type === "create_customer";
+
       const isOrderAction =
         proposedAction.type === "create_order";
 
       return NextResponse.json({
         reply:
           locale === "en"
-            ? isOrderAction
-              ? "I prepared the order below for your confirmation."
-              : "I prepared the task below for your confirmation."
-            : isOrderAction
-              ? "جهزت الطلب التالي لتأكيدك."
-              : "جهزت المهمة التالية لتأكيدك.",
+            ? isCustomerAction
+              ? "I prepared the customer below for your confirmation."
+              : isOrderAction
+                ? "I prepared the order below for your confirmation."
+                : "I prepared the task below for your confirmation."
+            : isCustomerAction
+              ? "جهزت العميل التالي لتأكيدك."
+              : isOrderAction
+                ? "جهزت الطلب التالي لتأكيدك."
+                : "جهزت المهمة التالية لتأكيدك.",
         plan: plan.name,
         action: proposedAction,
       });
     }
 
     /*
+     * ------------------------------------------------------------
      * CUSTOMER SUMMARY DETERMINISTIC
+     * ------------------------------------------------------------
      */
 
     if (
@@ -839,7 +996,8 @@ ${faq || "Not available"}
         const customers = data.customers || [];
         const orders = data.orders || [];
         const tasks = data.tasks || [];
-        const conversations = data.conversations || [];
+        const conversations =
+          data.conversations || [];
 
         const customer = customers[0];
 
@@ -881,92 +1039,102 @@ ${faq || "Not available"}
           );
 
           lines.push("");
-
           lines.push(`## Orders (${orders.length})`);
 
           if (orders.length === 0) {
             lines.push("- No orders available.");
           } else {
-            orders.forEach((order: any, index: number) => {
-              lines.push(`### Order ${index + 1}`);
+            orders.forEach(
+              (order: any, index: number) => {
+                lines.push(
+                  `### Order ${index + 1}`
+                );
 
-              lines.push(
-                `- ID: ${order.id || "Not available"}`
-              );
+                lines.push(
+                  `- ID: ${order.id || "Not available"}`
+                );
 
-              lines.push(
-                `- Service: ${order.service || "Not available"}`
-              );
+                lines.push(
+                  `- Service: ${order.service || "Not available"}`
+                );
 
-              lines.push(
-                `- Total: ${order.total ?? "Not available"}`
-              );
+                lines.push(
+                  `- Total: ${order.total ?? "Not available"}`
+                );
 
-              lines.push(
-                `- Status: ${order.status || "Not available"}`
-              );
+                lines.push(
+                  `- Status: ${order.status || "Not available"}`
+                );
 
-              lines.push(
-                `- Notes: ${order.notes || "Not available"}`
-              );
+                lines.push(
+                  `- Notes: ${order.notes || "Not available"}`
+                );
 
-              lines.push(
-                `- Created at: ${order.created_at || "Not available"}`
-              );
-            });
+                lines.push(
+                  `- Created at: ${order.created_at || "Not available"}`
+                );
+              }
+            );
           }
 
           lines.push("");
-
           lines.push(`## Tasks (${tasks.length})`);
 
           if (tasks.length === 0) {
             lines.push("- No tasks available.");
           } else {
-            tasks.forEach((task: any, index: number) => {
-              lines.push(`### Task ${index + 1}`);
+            tasks.forEach(
+              (task: any, index: number) => {
+                lines.push(
+                  `### Task ${index + 1}`
+                );
 
-              lines.push(
-                `- ID: ${task.id || "Not available"}`
-              );
+                lines.push(
+                  `- ID: ${task.id || "Not available"}`
+                );
 
-              lines.push(
-                `- Title: ${task.title || "Not available"}`
-              );
+                lines.push(
+                  `- Title: ${task.title || "Not available"}`
+                );
 
-              lines.push(
-                `- Description: ${task.description || "Not available"}`
-              );
+                lines.push(
+                  `- Description: ${task.description || "Not available"}`
+                );
 
-              lines.push(
-                `- Status: ${task.status || "Not available"}`
-              );
+                lines.push(
+                  `- Status: ${task.status || "Not available"}`
+                );
 
-              lines.push(
-                `- Priority: ${task.priority || "Not available"}`
-              );
+                lines.push(
+                  `- Priority: ${task.priority || "Not available"}`
+                );
 
-              lines.push(
-                `- Due date: ${task.due_date || "Not available"}`
-              );
+                lines.push(
+                  `- Due date: ${task.due_date || "Not available"}`
+                );
 
-              lines.push(
-                `- Created at: ${task.created_at || "Not available"}`
-              );
-            });
+                lines.push(
+                  `- Created at: ${task.created_at || "Not available"}`
+                );
+              }
+            );
           }
 
           lines.push("");
-
           lines.push(
             `## Conversations (${conversations.length})`
           );
 
           if (conversations.length === 0) {
-            lines.push("- No conversations available.");
+            lines.push(
+              "- No conversations available."
+            );
           } else {
             conversations.forEach(
-              (conversation: any, index: number) => {
+              (
+                conversation: any,
+                index: number
+              ) => {
                 lines.push(
                   `### Conversation ${index + 1}`
                 );
@@ -984,33 +1152,29 @@ ${faq || "Not available"}
                 );
 
                 lines.push(
-                  `- Last message: ${
-                    conversation.last_message || "Not available"
-                  }`
+                  `- Last message: ${conversation.last_message || "Not available"}`
                 );
 
                 lines.push(
-                  `- Created at: ${
-                    conversation.created_at || "Not available"
-                  }`
+                  `- Created at: ${conversation.created_at || "Not available"}`
                 );
 
                 lines.push(
-                  `- Updated at: ${
-                    conversation.updated_at || "Not available"
-                  }`
+                  `- Updated at: ${conversation.updated_at || "Not available"}`
                 );
 
                 if (
                   conversation.ai_summary ||
                   conversation.ai_intent ||
                   conversation.ai_priority ||
-                  (conversation.ai_is_lead !== null &&
-                    conversation.ai_is_lead !== undefined) ||
+                  conversation.ai_is_lead !== null &&
+                    conversation.ai_is_lead !== undefined ||
                   conversation.ai_recommended_action ||
                   conversation.ai_reason
                 ) {
-                  lines.push("- AI analysis:");
+                  lines.push(
+                    "- AI analysis:"
+                  );
 
                   if (conversation.ai_summary) {
                     lines.push(
@@ -1041,7 +1205,9 @@ ${faq || "Not available"}
                     );
                   }
 
-                  if (conversation.ai_recommended_action) {
+                  if (
+                    conversation.ai_recommended_action
+                  ) {
                     lines.push(
                       `  - Recommended action (AI-generated): ${conversation.ai_recommended_action}`
                     );
@@ -1065,7 +1231,6 @@ ${faq || "Not available"}
         } else {
           lines.push("# ملخص العميل");
           lines.push("");
-
           lines.push("## بيانات العميل");
 
           lines.push(
@@ -1093,102 +1258,120 @@ ${faq || "Not available"}
           );
 
           lines.push("");
-
-          lines.push(`## الطلبات (${orders.length})`);
+          lines.push(
+            `## الطلبات (${orders.length})`
+          );
 
           if (orders.length === 0) {
-            lines.push("- لا توجد طلبات متاحة.");
+            lines.push(
+              "- لا توجد طلبات متاحة."
+            );
           } else {
-            orders.forEach((order: any, index: number) => {
-              lines.push(`### الطلب ${index + 1}`);
+            orders.forEach(
+              (order: any, index: number) => {
+                lines.push(
+                  `### الطلب ${index + 1}`
+                );
 
-              lines.push(
-                `- المعرّف: ${order.id || "غير متوفر"}`
-              );
+                lines.push(
+                  `- المعرّف: ${order.id || "غير متوفر"}`
+                );
 
-              lines.push(
-                `- الخدمة: ${order.service || "غير متوفر"}`
-              );
+                lines.push(
+                  `- الخدمة: ${order.service || "غير متوفر"}`
+                );
 
-              lines.push(
-                `- الإجمالي: ${order.total ?? "غير متوفر"}`
-              );
+                lines.push(
+                  `- الإجمالي: ${order.total ?? "غير متوفر"}`
+                );
 
-              lines.push(
-                `- الحالة: ${order.status || "غير متوفر"}`
-              );
+                lines.push(
+                  `- الحالة: ${order.status || "غير متوفر"}`
+                );
 
-              lines.push(
-                `- الملاحظات: ${order.notes || "غير متوفر"}`
-              );
+                lines.push(
+                  `- الملاحظات: ${order.notes || "غير متوفر"}`
+                );
 
-              lines.push(
-                `- تاريخ الإنشاء: ${
-                  order.created_at || "غير متوفر"
-                }`
-              );
-            });
+                lines.push(
+                  `- تاريخ الإنشاء: ${
+                    order.created_at || "غير متوفر"
+                  }`
+                );
+              }
+            );
           }
 
           lines.push("");
-
-          lines.push(`## المهام (${tasks.length})`);
+          lines.push(
+            `## المهام (${tasks.length})`
+          );
 
           if (tasks.length === 0) {
-            lines.push("- لا توجد مهام متاحة.");
+            lines.push(
+              "- لا توجد مهام متاحة."
+            );
           } else {
-            tasks.forEach((task: any, index: number) => {
-              lines.push(`### المهمة ${index + 1}`);
+            tasks.forEach(
+              (task: any, index: number) => {
+                lines.push(
+                  `### المهمة ${index + 1}`
+                );
 
-              lines.push(
-                `- المعرّف: ${task.id || "غير متوفر"}`
-              );
+                lines.push(
+                  `- المعرّف: ${task.id || "غير متوفر"}`
+                );
 
-              lines.push(
-                `- العنوان: ${task.title || "غير متوفر"}`
-              );
+                lines.push(
+                  `- العنوان: ${task.title || "غير متوفر"}`
+                );
 
-              lines.push(
-                `- الوصف: ${
-                  task.description || "غير متوفر"
-                }`
-              );
+                lines.push(
+                  `- الوصف: ${
+                    task.description || "غير متوفر"
+                  }`
+                );
 
-              lines.push(
-                `- الحالة: ${task.status || "غير متوفر"}`
-              );
+                lines.push(
+                  `- الحالة: ${task.status || "غير متوفر"}`
+                );
 
-              lines.push(
-                `- الأولوية: ${
-                  task.priority || "غير متوفر"
-                }`
-              );
+                lines.push(
+                  `- الأولوية: ${
+                    task.priority || "غير متوفر"
+                  }`
+                );
 
-              lines.push(
-                `- تاريخ الاستحقاق: ${
-                  task.due_date || "غير متوفر"
-                }`
-              );
+                lines.push(
+                  `- تاريخ الاستحقاق: ${
+                    task.due_date || "غير متوفر"
+                  }`
+                );
 
-              lines.push(
-                `- تاريخ الإنشاء: ${
-                  task.created_at || "غير متوفر"
-                }`
-              );
-            });
+                lines.push(
+                  `- تاريخ الإنشاء: ${
+                    task.created_at || "غير متوفر"
+                  }`
+                );
+              }
+            );
           }
 
           lines.push("");
-
           lines.push(
             `## المحادثات (${conversations.length})`
           );
 
           if (conversations.length === 0) {
-            lines.push("- لا توجد محادثات متاحة.");
+            lines.push(
+              "- لا توجد محادثات متاحة."
+            );
           } else {
             conversations.forEach(
-              (conversation: any, index: number) => {
+              (
+                conversation: any,
+                index: number
+              ) => {
                 lines.push(
                   `### المحادثة ${index + 1}`
                 );
@@ -1236,8 +1419,8 @@ ${faq || "Not available"}
                   conversation.ai_summary ||
                   conversation.ai_intent ||
                   conversation.ai_priority ||
-                  (conversation.ai_is_lead !== null &&
-                    conversation.ai_is_lead !== undefined) ||
+                  conversation.ai_is_lead !== null &&
+                    conversation.ai_is_lead !== undefined ||
                   conversation.ai_recommended_action ||
                   conversation.ai_reason
                 ) {
