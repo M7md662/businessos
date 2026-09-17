@@ -21,12 +21,17 @@ type Message = {
 };
 
 type ProposedAction = {
-  type: "create_task";
-  title: string;
-  description: string;
-  due_date: string;
-  priority: string;
-  status: string;
+  type: "create_task" | "create_order";
+  title?: string;
+  description?: string;
+  due_date?: string;
+  priority?: string;
+  status?: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  service?: string;
+  total?: number;
+  notes?: string;
 };
 
 type AccessState = "loading" | "allowed" | "denied" | "error";
@@ -61,28 +66,40 @@ export default function AIPage() {
 
       if (saved) {
         try {
-          setMessages(JSON.parse(saved));
+          const parsed = JSON.parse(saved);
+
+          if (Array.isArray(parsed)) {
+            setMessages(parsed);
+          }
         } catch {
           localStorage.removeItem(storageKey);
         }
       }
     }
-  }, [accessState]);
+  }, [accessState, storageKey]);
 
   useEffect(() => {
     if (accessState === "allowed") {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify(messages)
-      );
+      localStorage.setItem(storageKey, JSON.stringify(messages));
     }
-  }, [messages, accessState]);
+  }, [messages, accessState, storageKey]);
 
   async function checkAccess() {
     setAccessState("loading");
     setError("");
 
     try {
+      const {
+        data: debugSession,
+        error: debugSessionError,
+      } = await supabase.auth.getSession();
+
+      console.log("AI SESSION DEBUG:", {
+        hasSession: !!debugSession.session,
+        userId: debugSession.session?.user?.id ?? null,
+        error: debugSessionError,
+      });
+
       const {
         data: { user },
         error: userError,
@@ -109,9 +126,7 @@ export default function AIPage() {
         .from("company_members")
         .select("company_id, role, created_at")
         .eq("user_id", user.id)
-        .order("created_at", {
-          ascending: false,
-        })
+        .order("created_at", { ascending: false })
         .limit(1);
 
       if (membershipError) {
@@ -139,24 +154,17 @@ export default function AIPage() {
         error: subscriptionError,
       } = await supabase
         .from("subscriptions")
-        .select(
-          "plan_id, status, end_date, created_at"
-        )
+        .select("plan_id, status, end_date, created_at")
         .eq("company_id", membership.company_id)
         .eq("status", "active")
-        .order("created_at", {
-          ascending: false,
-        })
+        .order("created_at", { ascending: false })
         .limit(1);
 
       if (subscriptionError) {
         throw subscriptionError;
       }
 
-      if (
-        !subscriptions ||
-        subscriptions.length === 0
-      ) {
+      if (!subscriptions || subscriptions.length === 0) {
         setError(
           isEnglish
             ? "Your company does not have an active subscription."
@@ -254,6 +262,7 @@ export default function AIPage() {
             due_date: proposedAction.due_date,
             priority: proposedAction.priority,
             status: proposedAction.status,
+            customer_id: proposedAction.customer_id,
           }),
         });
 
@@ -264,7 +273,7 @@ export default function AIPage() {
             data?.error ||
               (isEnglish
                 ? "Failed to create the task."
-                : "??? ????? ??????.")
+                : "فشل إنشاء المهمة.")
           );
         }
 
@@ -284,6 +293,50 @@ export default function AIPage() {
 
         setProposedAction(null);
       }
+
+      if (proposedAction.type === "create_order") {
+        const response = await fetch("/api/ai/actions/order", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            customer_id: proposedAction.customer_id,
+            customer_name: proposedAction.customer_name,
+            service: proposedAction.service,
+            total: proposedAction.total,
+            status: proposedAction.status,
+            notes: proposedAction.notes,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data?.error ||
+              (isEnglish
+                ? "Failed to create the order."
+                : "فشل إنشاء الطلب.")
+          );
+        }
+
+        const successMessage: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: isEnglish
+            ? "The order was created successfully."
+            : "تم إنشاء الطلب بنجاح.",
+          created_at: new Date().toISOString(),
+        };
+
+        setMessages((current) => [
+          ...current,
+          successMessage,
+        ]);
+
+        setProposedAction(null);
+      }
     } catch (err) {
       console.error("AI action confirmation error:", err);
 
@@ -292,14 +345,14 @@ export default function AIPage() {
           ? err.message
           : isEnglish
             ? "Failed to execute the action."
-            : "??? ????? ???????."
+            : "تعذر تنفيذ الإجراء."
       );
     } finally {
       setLoading(false);
     }
   }
 
-async function sendMessage(
+  async function sendMessage(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
@@ -356,11 +409,11 @@ async function sendMessage(
         created_at: new Date().toISOString(),
       };
 
-        if (data.action) {
-          setProposedAction(data.action);
-        } else {
-          setProposedAction(null);
-        }
+      if (data.action) {
+        setProposedAction(data.action);
+      } else {
+        setProposedAction(null);
+      }
 
       setMessages((current) => [
         ...current,
@@ -388,7 +441,10 @@ async function sendMessage(
 
   if (accessState === "loading") {
     return (
-      <main className="min-h-screen bg-white text-black">
+      <main
+        dir={isEnglish ? "ltr" : "rtl"}
+        className="min-h-screen bg-white text-black"
+      >
         <div className="flex min-h-[70vh] items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>
@@ -401,7 +457,10 @@ async function sendMessage(
     accessState === "error"
   ) {
     return (
-      <main className="min-h-screen bg-white text-black">
+      <main
+        dir={isEnglish ? "ltr" : "rtl"}
+        className="min-h-screen bg-white text-black"
+      >
         <div className="mx-auto flex min-h-[70vh] max-w-3xl items-center justify-center px-6">
           <div className="w-full rounded-3xl border border-black/10 bg-white p-8 text-center shadow-sm">
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-white">
@@ -424,7 +483,10 @@ async function sendMessage(
   }
 
   return (
-    <main className="min-h-screen bg-white text-black">
+    <main
+      dir={isEnglish ? "ltr" : "rtl"}
+      className="min-h-screen bg-white text-black"
+    >
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -474,7 +536,7 @@ async function sendMessage(
                 <h2 className="text-xl font-semibold">
                   {isEnglish
                     ? "How can I help you?"
-                    : "كيف يمكنني مساعدتك"}
+                    : "كيف يمكنني مساعدتك؟"}
                 </h2>
 
                 <p className="mt-2 max-w-md text-sm text-black/50">
@@ -525,22 +587,89 @@ async function sendMessage(
           )}
 
           {proposedAction && (
-              <div className="border-t border-black/10 bg-black/[0.02] p-4">
-                <div className="rounded-2xl border border-black/10 bg-white p-4">
-                  <div className="mb-4">
-                    <p className="text-sm font-semibold">
-                      {isEnglish
+            <div className="border-t border-black/10 bg-black/[0.02] p-4">
+              <div className="rounded-2xl border border-black/10 bg-white p-4">
+                <div className="mb-4">
+                  <p className="text-sm font-semibold">
+                    {proposedAction.type === "create_order"
+                      ? isEnglish
+                        ? "Proposed order"
+                        : "طلب مقترح"
+                      : isEnglish
                         ? "Proposed action"
                         : "إجراء مقترح"}
-                    </p>
+                  </p>
 
-                    <p className="mt-1 text-xs text-black/50">
-                      {isEnglish
-                        ? "Review the details before confirming."
-                        : "راجع تفاصيل المهمة قبل تأكيد إنشائها"}
-                    </p>
+                  <p className="mt-1 text-xs text-black/50">
+                    {proposedAction.type === "create_order"
+                      ? isEnglish
+                        ? "Review the order details before confirming."
+                        : "راجع تفاصيل الطلب قبل تأكيد إنشائه."
+                      : isEnglish
+                        ? "Review the task details before confirming."
+                        : "راجع تفاصيل المهمة قبل تأكيد إنشائها."}
+                  </p>
+                </div>
+
+                {proposedAction.type === "create_order" ? (
+                  <div className="space-y-3 text-sm">
+                    {proposedAction.customer_name && (
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish ? "Customer" : "العميل"}
+                        </p>
+                        <p className="mt-1 font-medium">
+                          {proposedAction.customer_name}
+                        </p>
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="text-xs text-black/50">
+                        {isEnglish ? "Service" : "الخدمة"}
+                      </p>
+                      <p className="mt-1 font-medium">
+                        {proposedAction.service || "-"}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish ? "Total" : "الإجمالي"}
+                        </p>
+                        <p className="mt-1 font-medium">
+                          {Number(
+                            proposedAction.total || 0
+                          ).toLocaleString(
+                            isEnglish ? "en-US" : "ar-EG"
+                          )}{" "}
+                          {isEnglish ? "EGP" : "جنيه"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish ? "Status" : "الحالة"}
+                        </p>
+                        <p className="mt-1 font-medium">
+                          {proposedAction.status || "-"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {proposedAction.notes && (
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish ? "Notes" : "ملاحظات"}
+                        </p>
+                        <p className="mt-1">
+                          {proposedAction.notes}
+                        </p>
+                      </div>
+                    )}
                   </div>
-
+                ) : (
                   <div className="space-y-3 text-sm">
                     <div>
                       <p className="text-xs text-black/50">
@@ -550,6 +679,17 @@ async function sendMessage(
                         {proposedAction.title}
                       </p>
                     </div>
+
+                    {proposedAction.customer_name && (
+                      <div>
+                        <p className="text-xs text-black/50">
+                          {isEnglish ? "Customer" : "العميل"}
+                        </p>
+                        <p className="mt-1 font-medium">
+                          {proposedAction.customer_name}
+                        </p>
+                      </div>
+                    )}
 
                     {proposedAction.description && (
                       <div>
@@ -565,7 +705,9 @@ async function sendMessage(
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div>
                         <p className="text-xs text-black/50">
-                          {isEnglish ? "Due date" : "تاريخ الاستحقاق"}
+                          {isEnglish
+                            ? "Due date"
+                            : "تاريخ الاستحقاق"}
                         </p>
                         <p className="mt-1">
                           {proposedAction.due_date || "-"}
@@ -574,10 +716,12 @@ async function sendMessage(
 
                       <div>
                         <p className="text-xs text-black/50">
-                          {isEnglish ? "Priority" : "الأولوية"}
+                          {isEnglish
+                            ? "Priority"
+                            : "الأولوية"}
                         </p>
                         <p className="mt-1">
-                          {proposedAction.priority}
+                          {proposedAction.priority || "-"}
                         </p>
                       </div>
 
@@ -586,42 +730,47 @@ async function sendMessage(
                           {isEnglish ? "Status" : "الحالة"}
                         </p>
                         <p className="mt-1">
-                          {proposedAction.status}
+                          {proposedAction.status || "-"}
                         </p>
                       </div>
                     </div>
                   </div>
+                )}
 
-                  <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={confirmProposedAction}
-                      disabled={loading}
-                      className="rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {loading
+                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={confirmProposedAction}
+                    disabled={loading}
+                    className="rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {loading
+                      ? isEnglish
+                        ? "Creating..."
+                        : "جاري الإنشاء..."
+                      : proposedAction.type === "create_order"
                         ? isEnglish
-                          ? "Creating..."
-                          : "جار الإنشاء..."
+                          ? "Confirm and create order"
+                          : "تأكيد وإنشاء الطلب"
                         : isEnglish
-                          ? "Confirm and create"
-                          : "تأكيد وإنشاء"}
-                    </button>
+                          ? "Confirm and create task"
+                          : "تأكيد وإنشاء المهمة"}
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setProposedAction(null)}
-                      disabled={loading}
-                      className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-medium transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {isEnglish ? "Cancel" : "إلغاء"}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setProposedAction(null)}
+                    disabled={loading}
+                    className="rounded-xl border border-black/10 px-4 py-2.5 text-sm font-medium transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isEnglish ? "Cancel" : "إلغاء"}
+                  </button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            <form
+          <form
             onSubmit={sendMessage}
             className="border-t border-black/10 p-4"
           >
@@ -642,9 +791,7 @@ async function sendMessage(
 
               <button
                 type="submit"
-                disabled={
-                  loading || !input.trim()
-                }
+                disabled={loading || !input.trim()}
                 className="flex items-center gap-2 rounded-2xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading ? (
@@ -654,9 +801,7 @@ async function sendMessage(
                 )}
 
                 <span className="hidden sm:inline">
-                  {isEnglish
-                    ? "Send"
-                    : "إرسال"}
+                  {isEnglish ? "Send" : "إرسال"}
                 </span>
               </button>
             </div>
@@ -666,5 +811,3 @@ async function sendMessage(
     </main>
   );
 }
-
-

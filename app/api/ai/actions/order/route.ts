@@ -1,27 +1,16 @@
 ﻿import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
-const TASK_STATUSES = [
-  "جديدة",
-  "قيد التنفيذ",
-  "مكتملة",
+const ORDER_STATUSES = [
+  "جديد",
+  "قيد المتابعة",
+  "مكتمل",
+  "ملغي",
 ] as const;
 
-const TASK_PRIORITIES = [
-  "منخفضة",
-  "متوسطة",
-  "عالية",
-] as const;
-
-function isValidTaskStatus(value: string) {
-  return TASK_STATUSES.includes(
-    value as (typeof TASK_STATUSES)[number]
-  );
-}
-
-function isValidPriority(value: string) {
-  return TASK_PRIORITIES.includes(
-    value as (typeof TASK_PRIORITIES)[number]
+function isValidOrderStatus(value: string) {
+  return ORDER_STATUSES.includes(
+    value as (typeof ORDER_STATUSES)[number]
   );
 }
 
@@ -47,45 +36,52 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const title = String(body.title || "").trim();
-    const description = String(body.description || "").trim();
-    const dueDate = String(body.due_date || "").trim();
     const customerId = body.customer_id
       ? String(body.customer_id).trim()
       : null;
 
-    const priority = String(
-      body.priority || "متوسطة"
+    const customerName = String(
+      body.customer_name || ""
     ).trim();
+
+    const service = String(
+      body.service || ""
+    ).trim();
+
+    const total = Number(body.total ?? 0);
 
     const status = String(
-      body.status || "جديدة"
+      body.status || "جديد"
     ).trim();
 
-    if (!title) {
+    const notes = String(
+      body.notes || ""
+    ).trim();
+
+    if (!customerId) {
       return NextResponse.json(
-        { error: "Task title is required." },
+        { error: "Customer is required." },
         { status: 400 }
       );
     }
 
-    if (!isValidPriority(priority)) {
+    if (!service) {
       return NextResponse.json(
-        { error: "Invalid task priority." },
+        { error: "Order service is required." },
         { status: 400 }
       );
     }
 
-    if (!isValidTaskStatus(status)) {
+    if (!Number.isFinite(total) || total < 0) {
       return NextResponse.json(
-        { error: "Invalid task status." },
+        { error: "Order total is invalid." },
         { status: 400 }
       );
     }
 
-    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    if (!isValidOrderStatus(status)) {
       return NextResponse.json(
-        { error: "Invalid due date." },
+        { error: "Invalid order status." },
         { status: 400 }
       );
     }
@@ -113,25 +109,23 @@ export async function POST(req: Request) {
 
     const companyId = membership.company_id;
 
-    if (customerId) {
-      const { data: customer, error: customerError } =
-        await supabase
-          .from("customers")
-          .select("id")
-          .eq("id", customerId)
-          .eq("company_id", companyId)
-          .maybeSingle();
+    const { data: customer, error: customerError } =
+      await supabase
+        .from("customers")
+        .select("id, name")
+        .eq("id", customerId)
+        .eq("company_id", companyId)
+        .maybeSingle();
 
-      if (customerError) {
-        throw customerError;
-      }
+    if (customerError) {
+      throw customerError;
+    }
 
-      if (!customer) {
-        return NextResponse.json(
-          { error: "Customer not found in this company." },
-          { status: 403 }
-        );
-      }
+    if (!customer) {
+      return NextResponse.json(
+        { error: "Customer not found in this company." },
+        { status: 403 }
+      );
     }
 
     const { data: subscription, error: subscriptionError } =
@@ -174,18 +168,18 @@ export async function POST(req: Request) {
     }
 
     const { data, error } = await supabase
-      .from("tasks")
+      .from("orders")
       .insert({
         company_id: companyId,
-        title,
-        description: description || null,
-        due_date: dueDate || null,
-        priority,
+        customer_id: customer.id,
+        customer_name: customer.name || customerName || null,
+        service,
+        total,
         status,
-        customer_id: customerId,
+        notes: notes || null,
       })
       .select(
-        "id, title, description, status, priority, due_date, customer_id, created_at"
+        "id, company_id, customer_id, customer_name, service, total, status, notes, created_at"
       )
       .single();
 
@@ -195,17 +189,17 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      task: data,
+      order: data,
     });
   } catch (error) {
-    console.error("AI task action error:", error);
+    console.error("AI order action error:", error);
 
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
-            : "Failed to create task.",
+            : "Failed to create order.",
       },
       { status: 500 }
     );
