@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { hasFeature } from "@/lib/plan-permissions";
@@ -35,6 +35,21 @@ export async function POST(req: Request) {
     const body = await req.json();
     const message = String(body.message || "").trim();
     const locale = body.locale === "en" ? "en" : "ar";
+
+const conversationHistory = Array.isArray(body.conversationHistory)
+  ? body.conversationHistory
+      .filter(
+        (item: any) =>
+          item &&
+          (item.role === "user" || item.role === "assistant") &&
+          typeof item.content === "string"
+      )
+      .slice(-12)
+  : [];
+
+const pendingAction = body.pendingAction || null;
+
+    console.log("AI PENDING DEBUG:", { message, pendingAction });
 
     if (!message) {
       return NextResponse.json(
@@ -280,7 +295,7 @@ ${faq || "Not available"}
     const customerSummaryMode =
       customerQuestion && !recommendationRequested;
 
-    if (customerQuestion) {
+    if (customerQuestion && !pendingAction) {
       const searchValue = message
         .replace(/what\s+is\s+the\s+data\s+of/gi, "")
         .replace(/what\s+is\s+the\s+information\s+of/gi, "")
@@ -525,7 +540,7 @@ ${faq || "Not available"}
       customerSummaryMode,
     });
 
-    let proposedAction: any = null;
+    let proposedAction: any = pendingAction || null;
 
     /*
      * ------------------------------------------------------------
@@ -533,7 +548,55 @@ ${faq || "Not available"}
      * ------------------------------------------------------------
      */
 
-    if (createCustomerRequested) {
+    /*
+ * ------------------------------------------------------------
+ * CONTEXT-AWARE PENDING CUSTOMER ACTION
+ * ------------------------------------------------------------
+ * إذا كان هناك عميل مقترح مسبقًا والرسالة الحالية
+ * تحتوي على رقم هاتف أو بريد إلكتروني ندمج البيانات
+ * الجديدة مع الإجراء المعلّق.
+ */
+if (
+  pendingAction?.type === "create_customer" &&
+  !createCustomerRequested
+) {
+  let updated = false;
+
+  const updatedAction = {
+    ...pendingAction,
+  };
+
+  const phoneMatch = message.match(
+    /(?:رقم هاتفه|رقم هاتفها|هاتفه|هاتفها|برقم|phone|mobile|هاتف|موبايل)?\s*[:\-]?\s*(\+?\d[\d\s-]{8,}\d)/i
+  );
+
+  if (phoneMatch?.[1]) {
+    updatedAction.phone = phoneMatch[1]
+      .replace(/[\s-]/g, "")
+      .trim();
+
+    updated = true;
+  }
+
+  const emailMatch = message.match(
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
+  );
+
+  if (emailMatch?.[0]) {
+    updatedAction.email = emailMatch[0].trim();
+    updated = true;
+  }
+
+  if (updated) {
+    proposedAction = updatedAction;
+
+    console.log(
+      "AI CONTEXT UPDATED ACTION:",
+      proposedAction
+    );
+  }
+}
+if (createCustomerRequested) {
       let customerName = "";
       let customerPhone = "";
       let customerEmail = "";
@@ -899,25 +962,43 @@ ${faq || "Not available"}
       let customerId: string | null = null;
       let customerName: string | null = null;
 
-      if (customerResult) {
-        try {
-          const customerData = JSON.parse(
-            customerResult
-          );
+          if (customerMarkerIndex >= 0) {
+            const customerStart = customerMarkerIndex + customerMarker.length;
+            const customerEnd = serviceMarkerIndex > customerStart ? serviceMarkerIndex : amountMarkerIndex > customerStart ? amountMarkerIndex : normalizedMessage.length;
+            const extractedCustomerName = normalizedMessage.slice(customerStart, customerEnd).trim();
 
-          const customers = Array.isArray(customerData)
-            ? customerData
-            : customerData.customers || [];
+            if (extractedCustomerName) {
+              const { data: matchedCustomers } = await supabase
+                .from("customers")
+                .select("id, name")
+                .eq("company_id", companyId)
+                .ilike("name", "%" + extractedCustomerName + "%")
+                .order("created_at", { ascending: false })
+                .limit(1);
 
-          if (customers.length === 1) {
-            customerId = customers[0].id || null;
-            customerName = customers[0].name || null;
+              if (matchedCustomers && matchedCustomers.length > 0) {
+                customerId = matchedCustomers[0].id;
+                customerName = matchedCustomers[0].name;
+              }
+            }
           }
-        } catch {
-          customerId = null;
-          customerName = null;
-        }
-      }
+
+          if (!customerId && customerResult) {
+            try {
+              const customerData = JSON.parse(customerResult);
+              const customers = Array.isArray(customerData)
+                ? customerData
+                : customerData.customers || [];
+
+              if (customers.length === 1) {
+                customerId = customers[0].id || null;
+                customerName = customers[0].name || null;
+              }
+            } catch {
+              customerId = null;
+              customerName = null;
+            }
+          }
 
       let total = 0;
 
@@ -953,6 +1034,41 @@ ${faq || "Not available"}
      * ------------------------------------------------------------
      */
 
+    if (
+      pendingAction?.type === "create_task" &&
+      !createTaskRequested
+    ) {
+      const updatedAction = {
+        ...pendingAction,
+      };
+
+      const priorityMatch = message.match(
+        /(?:الأولوية|اولويه|أولوية|priority)\s*(?:هي|:)?\s*(عالية|عالي|متوسطة|متوسط|منخفضة|منخفض|high|medium|low)/i
+      );
+
+      if (priorityMatch?.[1]) {
+        const value = priorityMatch[1].toLowerCase();
+
+        if (value === "عالية" || value === "عالي" || value === "high") {
+          updatedAction.priority = "high";
+        } else if (
+          value === "منخفضة" ||
+          value === "منخفض" ||
+          value === "low"
+        ) {
+          updatedAction.priority = "low";
+        } else {
+          updatedAction.priority = "medium";
+        }
+
+        proposedAction = updatedAction;
+
+        console.log(
+          "AI TASK CONTEXT UPDATED:",
+          proposedAction
+        );
+      }
+    }
     if (proposedAction) {
       const isCustomerAction =
         proposedAction.type === "create_customer";
@@ -1686,3 +1802,10 @@ Do not add recommendation or action sections.`
     );
   }
 }
+
+
+
+
+
+
+

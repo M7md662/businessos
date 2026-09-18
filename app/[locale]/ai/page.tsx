@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useEffect, useState } from "react";
 import {
@@ -317,7 +317,7 @@ export default function AIPage() {
               title: proposedAction.title,
               description: proposedAction.description,
               due_date: proposedAction.due_date,
-              priority: proposedAction.priority,
+              priority: proposedAction.priority === "high" ? "\u0639\u0627\u0644\u064a\u0629" : proposedAction.priority === "low" ? "\u0645\u0646\u062e\u0641\u0636\u0629" : proposedAction.priority === "medium" ? "\u0645\u062a\u0648\u0633\u0637\u0629" : proposedAction.priority,
               status: proposedAction.status,
               customer_id: proposedAction.customer_id,
             }),
@@ -453,6 +453,11 @@ export default function AIPage() {
         body: JSON.stringify({
           message,
           locale,
+          conversationHistory: messages.slice(-20).map((item) => ({
+            role: item.role,
+            content: item.content,
+          })),
+          pendingAction: proposedAction,
         }),
       });
 
@@ -653,7 +658,7 @@ export default function AIPage() {
 
           {proposedAction && (
             <div className="border-t border-black/10 bg-black/[0.02] p-4">
-              <div className="rounded-2xl border border-black/10 bg-white p-4">
+              <div className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
                 <div className="mb-4">
                   <p className="text-sm font-semibold">
                     {proposedAction.type === "create_customer"
@@ -662,7 +667,7 @@ export default function AIPage() {
                         : "عميل مقترح"
                       : proposedAction.type === "create_order"
                         ? isEnglish
-                          ? "Proposed order"
+                          ? "New order"
                           : "طلب مقترح"
                         : isEnglish
                           ? "Proposed task"
