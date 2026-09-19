@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -16,6 +16,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import NotificationBell from "@/components/NotificationBell";
 
 type MainNavigationProps = {
   locale: string;
@@ -27,13 +28,22 @@ export default function MainNavigation({
   const pathname = usePathname();
   const isEnglish = locale === "en";
 
+  const isLoginPage =
+    pathname === `/${locale}/login` ||
+    pathname === `/${locale}/login/`;
+
+  if (isLoginPage) {
+    return null;
+  }
+
   const [isAdmin, setIsAdmin] = useState(false);
   const [checkingAdmin, setCheckingAdmin] = useState(true);
+  const [companyName, setCompanyName] = useState("");
 
   useEffect(() => {
     let mounted = true;
 
-    async function checkAdmin() {
+    async function loadUserData() {
       try {
         const {
           data: { user },
@@ -42,29 +52,47 @@ export default function MainNavigation({
         if (!user) {
           if (mounted) {
             setIsAdmin(false);
+            setCompanyName("");
             setCheckingAdmin(false);
           }
           return;
         }
 
-        const { data: admin, error } = await supabase
+        const { data: admin } = await supabase
           .from("admin_users")
           .select("user_id")
           .eq("user_id", user.id)
           .maybeSingle();
 
-        if (error) {
-          // عدم وجود صلاحية Admin ليس خطأ في واجهة المستخدم.
-          // نعتبر المستخدم غير Admin بدون إظهار خطأ في Console.
-          if (mounted) {
-            setIsAdmin(false);
-          }
-        } else if (mounted) {
+        if (mounted) {
           setIsAdmin(Boolean(admin));
+        }
+
+        const { data: membership, error: membershipError } =
+          await supabase
+            .from("company_members")
+            .select("company_id")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        if (!membershipError && membership?.company_id) {
+          const { data: company, error: companyError } =
+            await supabase
+              .from("companies")
+              .select("name")
+              .eq("id", membership.company_id)
+              .maybeSingle();
+
+          if (!companyError && company?.name && mounted) {
+            setCompanyName(company.name);
+          }
         }
       } catch {
         if (mounted) {
           setIsAdmin(false);
+          setCompanyName("");
         }
       } finally {
         if (mounted) {
@@ -73,7 +101,7 @@ export default function MainNavigation({
       }
     }
 
-    checkAdmin();
+    loadUserData();
 
     return () => {
       mounted = false;
@@ -95,6 +123,7 @@ export default function MainNavigation({
         workspace: "Workspace",
         workspaceSub: "Professional workspace",
         pro: "BusinessOS PRO",
+        company: "Company",
       }
     : {
         home: "الرئيسية",
@@ -110,6 +139,7 @@ export default function MainNavigation({
         workspace: "مساحة العمل",
         workspaceSub: "مساحة العمل الاحترافية",
         pro: "BusinessOS PRO",
+        company: "الشركة",
       };
 
   const navigation = [
@@ -187,7 +217,7 @@ export default function MainNavigation({
         <div className="p-5">
           <Link
             href={`/${locale}`}
-            className="mb-9 flex items-center gap-2 px-2"
+            className="mb-7 flex items-center gap-2 px-2"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-black text-xs font-bold text-white">
               B
@@ -203,6 +233,25 @@ export default function MainNavigation({
               </div>
             </div>
           </Link>
+
+          {/* Company + notifications */}
+          <div className="mb-6 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[8px] font-medium text-neutral-400">
+                  {labels.company}
+                </div>
+
+                <div className="mt-1 truncate text-[11px] font-semibold text-black">
+                  {checkingAdmin
+                    ? "..."
+                    : companyName || (isEnglish ? "My Company" : "شركتي")}
+                </div>
+              </div>
+
+              <NotificationBell />
+            </div>
+          </div>
 
           <nav className="space-y-1">
             {navigation.map((item) => {
@@ -307,3 +356,4 @@ export default function MainNavigation({
     </>
   );
 }
+

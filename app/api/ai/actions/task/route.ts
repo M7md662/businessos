@@ -27,7 +27,8 @@ function isValidPriority(value: string) {
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase =
+      await createSupabaseServerClient();
 
     const {
       data: { user },
@@ -40,109 +41,111 @@ export async function POST(req: Request) {
 
     if (!user) {
       return NextResponse.json(
-        { error: "Unauthorized" },
+        {
+          error: "Authentication required.",
+        },
         { status: 401 }
       );
     }
 
     const body = await req.json();
 
-    const title = String(body.title || "").trim();
-    const description = String(body.description || "").trim();
-    const dueDate = String(body.due_date || "").trim();
-    const customerId = body.customer_id
-      ? String(body.customer_id).trim()
-      : null;
+    const title =
+      typeof body.title === "string"
+        ? body.title.trim()
+        : "";
 
-    const priority = String(
-      body.priority || "متوسطة"
-    ).trim();
+    const description =
+      typeof body.description === "string"
+        ? body.description.trim()
+        : "";
 
-    const status = String(
-      body.status || "جديدة"
-    ).trim();
+    const dueDate =
+      typeof body.due_date === "string"
+        ? body.due_date
+        : null;
+
+    const priority =
+      typeof body.priority === "string"
+        ? body.priority
+        : "متوسطة";
+
+    const status =
+      typeof body.status === "string"
+        ? body.status
+        : "جديدة";
+
+    const customerId =
+      typeof body.customer_id === "string"
+        ? body.customer_id
+        : null;
 
     if (!title) {
       return NextResponse.json(
-        { error: "Task title is required." },
+        {
+          error: "Task title is required.",
+        },
         { status: 400 }
       );
     }
 
     if (!isValidPriority(priority)) {
       return NextResponse.json(
-        { error: "Invalid task priority." },
+        {
+          error: "Invalid task priority.",
+        },
         { status: 400 }
       );
     }
 
     if (!isValidTaskStatus(status)) {
       return NextResponse.json(
-        { error: "Invalid task status." },
+        {
+          error: "Invalid task status.",
+        },
         { status: 400 }
       );
     }
 
-    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-      return NextResponse.json(
-        { error: "Invalid due date." },
-        { status: 400 }
-      );
-    }
-
-    const { data: memberships, error: membershipError } =
-      await supabase
-        .from("company_members")
-        .select("company_id, role, created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
+    /*
+     * Get user's company membership.
+     */
+    const {
+      data: membership,
+      error: membershipError,
+    } = await supabase
+      .from("company_members")
+      .select("company_id, role")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
     if (membershipError) {
       throw membershipError;
     }
 
-    const membership = memberships?.[0];
-
-    if (!membership?.company_id) {
+    if (!membership) {
       return NextResponse.json(
-        { error: "Company not found." },
+        {
+          error: "Company membership not found.",
+        },
         { status: 403 }
       );
     }
 
     const companyId = membership.company_id;
 
-    if (customerId) {
-      const { data: customer, error: customerError } =
-        await supabase
-          .from("customers")
-          .select("id")
-          .eq("id", customerId)
-          .eq("company_id", companyId)
-          .maybeSingle();
-
-      if (customerError) {
-        throw customerError;
-      }
-
-      if (!customer) {
-        return NextResponse.json(
-          { error: "Customer not found in this company." },
-          { status: 403 }
-        );
-      }
-    }
-
-    const { data: subscription, error: subscriptionError } =
-      await supabase
-        .from("subscriptions")
-        .select("status, plan_id")
-        .eq("company_id", companyId)
-        .eq("status", "active")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    /*
+     * Verify active subscription.
+     */
+    const {
+      data: subscription,
+      error: subscriptionError,
+    } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .eq("company_id", companyId)
+      .eq("status", "active")
+      .maybeSingle();
 
     if (subscriptionError) {
       throw subscriptionError;
@@ -150,17 +153,24 @@ export async function POST(req: Request) {
 
     if (!subscription) {
       return NextResponse.json(
-        { error: "Active subscription required." },
+        {
+          error: "Active subscription required.",
+        },
         { status: 403 }
       );
     }
 
-    const { data: plan, error: planError } =
-      await supabase
-        .from("plans")
-        .select("*")
-        .eq("id", subscription.plan_id)
-        .maybeSingle();
+    /*
+     * Verify subscription plan.
+     */
+    const {
+      data: plan,
+      error: planError,
+    } = await supabase
+      .from("plans")
+      .select("*")
+      .eq("id", subscription.plan_id)
+      .maybeSingle();
 
     if (planError) {
       throw planError;
@@ -168,11 +178,16 @@ export async function POST(req: Request) {
 
     if (!plan) {
       return NextResponse.json(
-        { error: "Subscription plan not found." },
+        {
+          error: "Subscription plan not found.",
+        },
         { status: 403 }
       );
     }
 
+    /*
+     * Create task.
+     */
     const { data, error } = await supabase
       .from("tasks")
       .insert({
@@ -185,7 +200,7 @@ export async function POST(req: Request) {
         customer_id: customerId,
       })
       .select(
-        "id, title, description, status, priority, due_date, customer_id, created_at"
+        "id, company_id, title, description, status, priority, due_date, customer_id, created_at, assigned_to, assigned_by, assignment_type, assignment_status"
       )
       .single();
 
@@ -193,12 +208,79 @@ export async function POST(req: Request) {
       throw error;
     }
 
+    /*
+     * Run AI Auto Assignment.
+     *
+     * The assignment engine checks the company's
+     * task_assignment_mode.
+     *
+     * ai_auto:
+     *   Groq selects the most suitable employee.
+     *
+     * manager_approval:
+     *   The task remains unassigned.
+     */
+    let assignment = null;
+
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        new URL(req.url).origin ||
+        "http://localhost:3000";
+
+      const assignmentResponse = await fetch(
+        `${baseUrl}/api/ai/actions/assign-task`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            task_id: data.id,
+          }),
+          cache: "no-store",
+        }
+      );
+
+      assignment =
+        await assignmentResponse.json();
+
+      /*
+       * TEMPORARY DEBUG
+       * This will show exactly what the
+       * AI Assignment Engine returned.
+       */
+      console.log(
+        "BUSINESSOS AI ASSIGNMENT RESULT:",
+        assignment
+      );
+
+      if (!assignmentResponse.ok) {
+        console.error(
+          "AI task assignment returned an error:",
+          assignment
+        );
+      }
+    } catch (assignmentError) {
+      console.error(
+        "AI task assignment failed:",
+        assignmentError
+      );
+    }
+
+    /*
+     * Return task + assignment result.
+     */
     return NextResponse.json({
       success: true,
       task: data,
+      assignment,
     });
   } catch (error) {
-    console.error("AI task action error:", error);
+    console.error(
+      "AI task action error:",
+      error
+    );
 
     return NextResponse.json(
       {

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
@@ -146,7 +146,7 @@ export default function LoginPage() {
   return (
     <main
       dir={isEnglish ? "ltr" : "rtl"}
-      className="min-h-screen bg-[#f3f3f3] px-4 py-6 text-[#111] sm:px-6 sm:py-10"
+      className="min-h-screen bg-[#f3f3f3] px-4 py-6 text-[#111] sm:px-6 sm:py-10 lg:-ms-[221px] lg:-me-5 lg:w-[calc(100%+241px)]"
     >
       <div className="mx-auto flex min-h-[calc(100vh-48px)] max-w-[1200px] items-center">
         <div className="grid w-full overflow-hidden rounded-[28px] border border-neutral-100 bg-white shadow-[0_20px_70px_rgba(0,0,0,.08)] lg:grid-cols-[1fr_1.05fr]">
@@ -427,3 +427,4 @@ function InfoItem({
     </div>
   );
 }
+

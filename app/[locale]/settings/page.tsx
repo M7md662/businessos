@@ -26,6 +26,7 @@ import {
   Save,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import TaskAssignmentMode from "./TaskAssignmentMode";
 
 type ReplyMode = "manual" | "ai_suggest" | "ai_auto" | "hybrid";
 
@@ -36,6 +37,8 @@ export default function SettingsPage() {
   const [email, setEmail] = useState("");
   const [isOwner, setIsOwner] = useState(false);
   const [companyId, setCompanyId] = useState("");
+  const [taskAssignmentMode, setTaskAssignmentMode] =
+    useState<"manager_approval" | "ai_auto">("manager_approval");
 
     const [whatsappStatus, setWhatsappStatus] =
       useState<"connected" | "disconnected" | "error">("disconnected");
@@ -301,9 +304,9 @@ export default function SettingsPage() {
             );
           }
 
-        const { data: company } = await supabase
+        const { data: company, error: companyError } = await supabase
           .from("companies")
-          .select("reply_mode")
+          .select("reply_mode, task_assignment_mode")
           .eq("id", membership.company_id)
           .maybeSingle();
 
@@ -314,6 +317,13 @@ export default function SettingsPage() {
           company?.reply_mode === "hybrid"
         ) {
           setReplyMode(company.reply_mode);
+        }
+
+        if (
+          company?.task_assignment_mode === "manager_approval" ||
+          company?.task_assignment_mode === "ai_auto"
+        ) {
+          setTaskAssignmentMode(company.task_assignment_mode);
         }
       }
 
@@ -703,6 +713,12 @@ export default function SettingsPage() {
                   </div>
                 </section>
 
+                {/* Task Assignment Mode */}
+                <TaskAssignmentMode
+                  companyId={companyId}
+                  isEnglish={isEnglish}
+                  initialMode={taskAssignmentMode}
+                />
                 {/* Integrations */}
                 <section className="rounded-[20px] border border-neutral-100 bg-white p-5 shadow-[0_6px_25px_rgba(0,0,0,.03)] sm:p-6">
                   <div className="mb-6 flex items-start gap-3">
@@ -1321,4 +1337,11 @@ function ToggleRow({
     </div>
   );
 }
+
+
+
+
+
+
+
 

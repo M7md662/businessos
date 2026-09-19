@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle2,
-  CheckSquare,
-  CircleDot,
+  Check,
+  ChevronLeft,
   Clock3,
-  ListTodo,
+  Loader2,
   Plus,
-  Trash2,
-  User,
+  RotateCcw,
+  UserRound,
   X,
 } from "lucide-react";
 import { useLocale } from "next-intl";
@@ -22,27 +19,106 @@ type Priority = "منخفضة" | "متوسطة" | "عالية";
 
 type Task = {
   id: string;
+  company_id: string;
   title: string;
-  assignee: string;
-  dueDate: string;
-  priority: Priority;
-  status: TaskStatus;
+  description: string | null;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  created_at: string;
+  customer_id: string | null;
+  assigned_to: string | null;
+  assigned_by: string | null;
+  assignment_type: string | null;
+  assignment_status: string | null;
 };
 
-function isValidTaskStatus(value: string): value is TaskStatus {
-  return (
-    value === "جديدة" ||
-    value === "قيد التنفيذ" ||
-    value === "مكتملة"
-  );
+type Member = {
+  id: string;
+  user_id: string;
+  role: string;
+  created_at: string;
+};
+
+const STATUS_VALUES: TaskStatus[] = [
+  "جديدة",
+  "قيد التنفيذ",
+  "مكتملة",
+];
+
+const PRIORITY_VALUES: Priority[] = [
+  "منخفضة",
+  "متوسطة",
+  "عالية",
+];
+
+function getStatusLabel(status: string, locale: string) {
+  if (locale === "en") {
+    if (status === "جديدة" || status === "pending") return "New";
+    if (status === "قيد التنفيذ" || status === "in_progress") {
+      return "In progress";
+    }
+    if (status === "مكتملة" || status === "completed") {
+      return "Completed";
+    }
+  }
+
+  return status;
 }
 
-function isValidPriority(value: string): value is Priority {
-  return (
-    value === "منخفضة" ||
-    value === "متوسطة" ||
-    value === "عالية"
-  );
+function getPriorityLabel(priority: string, locale: string) {
+  if (locale === "en") {
+    if (priority === "عالية" || priority === "high") return "High";
+    if (priority === "متوسطة" || priority === "medium") {
+      return "Medium";
+    }
+    if (priority === "منخفضة" || priority === "low") {
+      return "Low";
+    }
+  }
+
+  return priority;
+}
+
+function getRoleLabel(role: string, locale: string) {
+  if (locale === "en") {
+    if (role === "owner") return "Owner";
+    if (role === "manager") return "Manager";
+    if (role === "sales") return "Sales";
+    if (role === "support") return "Support";
+    return "Employee";
+  }
+
+  if (role === "owner") return "مالك الشركة";
+  if (role === "manager") return "مدير";
+  if (role === "sales") return "مبيعات";
+  if (role === "support") return "دعم";
+
+  return "موظف";
+}
+
+function normalizeStatus(status: string): TaskStatus {
+  if (status === "قيد التنفيذ" || status === "in_progress") {
+    return "قيد التنفيذ";
+  }
+
+  if (status === "مكتملة" || status === "completed") {
+    return "مكتملة";
+  }
+
+  return "جديدة";
+}
+
+function normalizePriority(priority: string): Priority {
+  if (priority === "عالية" || priority === "high") {
+    return "عالية";
+  }
+
+  if (priority === "منخفضة" || priority === "low") {
+    return "منخفضة";
+  }
+
+  return "متوسطة";
 }
 
 export default function TasksPage() {
@@ -50,351 +126,571 @@ export default function TasksPage() {
   const isEnglish = locale === "en";
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [members, setMembers] = useState<Member[]>([]);
+  const [companyId, setCompanyId] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
 
-  const [title, setTitle] = useState("");
-  const [assignee, setAssignee] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [priority, setPriority] =
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newPriority, setNewPriority] =
     useState<Priority>("متوسطة");
-  const [status, setStatus] =
+  const [newDueDate, setNewDueDate] = useState("");
+
+  const [editStatus, setEditStatus] =
     useState<TaskStatus>("جديدة");
+  const [editPriority, setEditPriority] =
+    useState<Priority>("متوسطة");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editAssignedTo, setEditAssignedTo] = useState("");
 
   const text = isEnglish
     ? {
-        management: "WORK MANAGEMENT",
         title: "Tasks",
-        description:
-          "Organize your team's work and track progress from one place.",
-        addTask: "Add task",
+        subtitle: "Manage work, assignments and execution",
         newTask: "New task",
-        newTaskDescription:
-          "Enter the basic information for the task.",
-        taskName: "Task name",
-        taskNamePlaceholder:
-          "Example: Follow up with customer",
-        assignee: "Assignee",
-        assigneePlaceholder: "Example: Mohammed",
-        dueDate: "Due date",
-        priority: "Priority",
-        status: "Status",
-        low: "Low",
-        medium: "Medium",
-        high: "High",
-        newStatus: "New",
+        allTasks: "All tasks",
+        newCount: "New",
         inProgress: "In progress",
         completed: "Completed",
-        saveTask: "Save task",
-        saving: "Saving...",
-        cancel: "Cancel",
-        totalTasks: "Total tasks",
-        newTasks: "New tasks",
-        inProgressTasks: "In progress",
-        completedTasks: "Completed",
-        highPriority: "High priority tasks",
-        highPriorityDescription:
-          "These tasks need attention and follow-up.",
-        taskList: "Task list",
-        taskListDescription:
-          "All tasks registered in the system.",
-        taskCount: "tasks",
-        task: "Task",
-        action: "Action",
-        delete: "Delete",
         noTasks: "No tasks yet",
-        noTasksDescription:
-          "Add your first task to start organizing your work.",
-        loading: "Loading tasks...",
-        loadError:
-          "An error occurred while loading tasks.",
-        saveError:
-          "An error occurred while saving the task.",
-        deleteError:
-          "An error occurred while deleting the task.",
-        enterTitle: "Please enter a task name.",
-        deleteConfirm:
-          "Are you sure you want to delete this task?",
+        createFirst: "Create the first task to start managing work.",
+        details: "Task details",
+        close: "Close",
+        titleField: "Title",
+        description: "Description",
+        status: "Status",
+        priority: "Priority",
+        dueDate: "Due date",
+        assignment: "Assignment",
+        assignedEmployee: "Assigned employee",
+        unassigned: "Unassigned",
+        assignmentType: "Assignment type",
+        manager: "Manager",
+        ai: "AI",
+        assignmentStatus: "Assignment status",
+        assigned: "Assigned",
+        pending: "Pending",
+        reassigned: "Reassigned",
+        cancelled: "Cancelled",
+        save: "Save changes",
+        assign: "Assign task",
+        reassign: "Reassign",
+        removeAssignment: "Remove assignment",
+        create: "Create task",
+        cancel: "Cancel",
+        creating: "Creating...",
+        saving: "Saving...",
+        taskTitlePlaceholder: "Enter task title",
+        descriptionPlaceholder: "Describe the task...",
+        employee: "Employee",
+        created: "Created",
+        ownerOnly: "Only the company owner can change task assignment.",
+        assignedToMe: "Assigned to me",
       }
     : {
-        management: "إدارة العمل",
         title: "المهام",
-        description:
-          "نظّم مهام فريقك وتابع الإنجاز من مكان واحد.",
-        addTask: "إضافة مهمة",
-        newTask: "إضافة مهمة جديدة",
-        newTaskDescription:
-          "أدخل البيانات الأساسية للمهمة.",
-        taskName: "اسم المهمة",
-        taskNamePlaceholder:
-          "مثال: متابعة العميل",
-        assignee: "المسؤول",
-        assigneePlaceholder: "مثال: محمد",
-        dueDate: "تاريخ الاستحقاق",
-        priority: "الأولوية",
-        status: "الحالة",
-        low: "منخفضة",
-        medium: "متوسطة",
-        high: "عالية",
-        newStatus: "جديدة",
+        subtitle: "إدارة العمل والتعيينات والتنفيذ",
+        newTask: "مهمة جديدة",
+        allTasks: "كل المهام",
+        newCount: "جديدة",
         inProgress: "قيد التنفيذ",
         completed: "مكتملة",
-        saveTask: "حفظ المهمة",
-        saving: "جاري الحفظ...",
+        noTasks: "لا توجد مهام",
+        createFirst: "أنشئ أول مهمة لبدء إدارة العمل.",
+        details: "تفاصيل المهمة",
+        close: "إغلاق",
+        titleField: "عنوان المهمة",
+        description: "الوصف",
+        status: "الحالة",
+        priority: "الأولوية",
+        dueDate: "تاريخ الاستحقاق",
+        assignment: "التعيين",
+        assignedEmployee: "الموظف المعيّن",
+        unassigned: "غير معيّنة",
+        assignmentType: "نوع التعيين",
+        manager: "مدير",
+        ai: "ذكاء اصطناعي",
+        assignmentStatus: "حالة التعيين",
+        assigned: "مُعيّنة",
+        pending: "معلّقة",
+        reassigned: "أعيد تعيينها",
+        cancelled: "ملغاة",
+        save: "حفظ التغييرات",
+        assign: "تعيين المهمة",
+        reassign: "إعادة التعيين",
+        removeAssignment: "إلغاء التعيين",
+        create: "إنشاء المهمة",
         cancel: "إلغاء",
-        totalTasks: "إجمالي المهام",
-        newTasks: "مهام جديدة",
-        inProgressTasks: "قيد التنفيذ",
-        completedTasks: "مكتملة",
-        highPriority: "مهام ذات أولوية عالية",
-        highPriorityDescription:
-          "تحتاج هذه المهام إلى اهتمام ومتابعة.",
-        taskList: "قائمة المهام",
-        taskListDescription:
-          "جميع المهام المسجلة في النظام.",
-        taskCount: "مهمة",
-        task: "المهمة",
-        action: "إجراء",
-        delete: "حذف",
-        noTasks: "لا توجد مهام حتى الآن",
-        noTasksDescription:
-          "أضف أول مهمة لبدء تنظيم عملك.",
-        loading: "جاري تحميل المهام...",
-        loadError:
-          "حدث خطأ أثناء تحميل المهام.",
-        saveError:
-          "حدث خطأ أثناء حفظ المهمة.",
-        deleteError:
-          "حدث خطأ أثناء حذف المهمة.",
-        enterTitle: "يرجى إدخال اسم المهمة.",
-        deleteConfirm:
-          "هل أنت متأكد من حذف هذه المهمة؟",
+        creating: "جاري الإنشاء...",
+        saving: "جاري الحفظ...",
+        taskTitlePlaceholder: "اكتب عنوان المهمة",
+        descriptionPlaceholder: "اكتب وصف المهمة...",
+        employee: "موظف",
+        created: "تاريخ الإنشاء",
+        ownerOnly: "مالك الشركة فقط يستطيع تغيير تعيين المهمة.",
+        assignedToMe: "مُسندة إليّ",
       };
 
-  useEffect(() => {
-    async function loadTasks() {
-      try {
-        setErrorMessage("");
-
-        const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser();
-
-        if (userError) {
-          throw userError;
-        }
-
-        if (!user) {
-          throw new Error("User not found");
-        }
-
-        const { data: membership, error: membershipError } =
-          await supabase
-            .from("company_members")
-            .select("company_id")
-            .eq("user_id", user.id)
-            .limit(1)
-            .maybeSingle();
-
-        if (membershipError) {
-          throw membershipError;
-        }
-
-        if (!membership?.company_id) {
-          throw new Error("Company not found");
-        }
-
-        const { data, error } = await supabase
-          .from("tasks")
-          .select(
-            "id, title, description, status, priority, due_date, created_at"
-          )
-          .eq("company_id", membership.company_id)
-          .order("created_at", {
-            ascending: false,
-          });
-
-        if (error) {
-          throw error;
-        }
-
-        const mappedTasks: Task[] = (data || []).map(
-          (task) => ({
-            id: String(task.id),
-            title: task.title || "",
-            assignee: task.description || "",
-            dueDate: task.due_date || "",
-            priority: isValidPriority(task.priority)
-              ? task.priority
-              : "متوسطة",
-            status: isValidTaskStatus(task.status)
-              ? task.status
-              : "جديدة",
-          })
-        );
-
-        setTasks(mappedTasks);
-      } catch (error) {
-        console.error("Tasks loading error:", error);
-        setErrorMessage(text.loadError);
-      } finally {
-        setIsLoaded(true);
-      }
-    }
-
-    loadTasks();
-  }, []);
-
-  async function addTask() {
-    if (!title.trim()) {
-      alert(text.enterTitle);
-      return;
-    }
-
-    setIsSaving(true);
-    setErrorMessage("");
+  async function loadTasks() {
+    setLoading(true);
+    setError("");
 
     try {
       const {
         data: { user },
-        error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) {
-        throw userError;
-      }
-
       if (!user) {
-        throw new Error("User not found");
+        throw new Error(
+          isEnglish
+            ? "Please sign in first."
+            : "يجب تسجيل الدخول أولاً"
+        );
       }
 
-      const { data: membership, error: membershipError } =
+      setCurrentUserId(user.id);
+
+      const { data: memberships, error: membershipError } =
         await supabase
           .from("company_members")
-          .select("company_id")
+          .select("company_id, role, created_at")
           .eq("user_id", user.id)
-          .limit(1)
-          .maybeSingle();
+          .order("created_at", { ascending: false })
+          .limit(1);
 
-      if (membershipError) {
-        throw membershipError;
+      if (membershipError) throw membershipError;
+
+      const membership = memberships?.[0];
+
+      if (!membership) {
+        throw new Error(
+          isEnglish
+            ? "No company was found for this account."
+            : "لم يتم العثور على شركة لهذا الحساب"
+        );
       }
 
-      if (!membership?.company_id) {
-        throw new Error("Company not found");
+      setCompanyId(membership.company_id);
+      setIsOwner(membership.role === "owner");
+
+      const { data: taskRows, error: tasksError } =
+        await supabase
+          .from("tasks")
+          .select(
+            "id, company_id, title, description, status, priority, due_date, created_at, customer_id, assigned_to, assigned_by, assignment_type, assignment_status"
+          )
+          .eq("company_id", membership.company_id)
+          .order("created_at", { ascending: false });
+
+      if (tasksError) throw tasksError;
+
+      setTasks((taskRows || []) as Task[]);
+
+      if (membership.role === "owner") {
+        const { data: memberRows, error: membersError } =
+          await supabase
+            .from("company_members")
+            .select("id, user_id, role, created_at")
+            .eq("company_id", membership.company_id)
+            .order("created_at", { ascending: true });
+
+        if (membersError) throw membersError;
+
+        setMembers((memberRows || []) as Member[]);
       }
-
-      const { data, error } = await supabase
-        .from("tasks")
-        .insert({
-          company_id: membership.company_id,
-          title: title.trim(),
-          description: assignee.trim() || null,
-          due_date: dueDate || null,
-          priority,
-          status,
-        })
-        .select(
-          "id, title, description, status, priority, due_date"
-        )
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      const newTask: Task = {
-        id: String(data.id),
-        title: data.title || title.trim(),
-        assignee: data.description || assignee.trim(),
-        dueDate: data.due_date || dueDate,
-        priority: isValidPriority(data.priority)
-          ? data.priority
-          : priority,
-        status: isValidTaskStatus(data.status)
-          ? data.status
-          : status,
-      };
-
-      setTasks((currentTasks) => [
-        newTask,
-        ...currentTasks,
-      ]);
-
-      setTitle("");
-      setAssignee("");
-      setDueDate("");
-      setPriority("متوسطة");
-      setStatus("جديدة");
-      setShowForm(false);
-    } catch (error) {
-      console.error("Task insert error:", error);
-      setErrorMessage(text.saveError);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEnglish
+          ? "Failed to load tasks."
+          : "حدث خطأ أثناء تحميل المهام"
+      );
     } finally {
-      setIsSaving(false);
+      setLoading(false);
     }
   }
 
-  async function deleteTask(id: string) {
-    const confirmed = window.confirm(
-      text.deleteConfirm
-    );
+  async function createTask() {
+    setError("");
+    setMessage("");
 
-    if (!confirmed) {
+    if (!newTitle.trim()) {
+      setError(
+        isEnglish
+          ? "Enter a task title."
+          : "اكتب عنوان المهمة"
+      );
       return;
     }
 
+    if (!companyId) return;
+
+    setSaving(true);
+
     try {
-      setErrorMessage("");
-
-      const { error } = await supabase
+      const { data, error: insertError } = await supabase
         .from("tasks")
-        .delete()
-        .eq("id", id);
-
-      if (error) {
-        throw error;
-      }
-
-      setTasks((currentTasks) =>
-        currentTasks.filter(
-          (task) => task.id !== id
+        .insert({
+          company_id: companyId,
+          title: newTitle.trim(),
+          description: newDescription.trim() || null,
+          priority: newPriority,
+          status: "جديدة",
+          due_date: newDueDate || null,
+          assignment_type: "manager",
+          assignment_status: "assigned",
+          assigned_to: null,
+          assigned_by: isOwner ? currentUserId : null,
+        })
+        .select(
+          "id, company_id, title, description, status, priority, due_date, created_at, customer_id, assigned_to, assigned_by, assignment_type, assignment_status"
         )
+        .single();
+
+      if (insertError) throw insertError;
+
+      setTasks((current) => [data as Task, ...current]);
+
+      setNewTitle("");
+      setNewDescription("");
+      setNewPriority("متوسطة");
+      setNewDueDate("");
+      setShowCreate(false);
+
+      setMessage(
+        isEnglish
+          ? "Task created successfully."
+          : "تم إنشاء المهمة بنجاح"
       );
-    } catch (error) {
-      console.error("Task delete error:", error);
-      setErrorMessage(text.deleteError);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEnglish
+          ? "Failed to create task."
+          : "تعذر إنشاء المهمة"
+      );
+    } finally {
+      setSaving(false);
     }
   }
 
-  const newTasks = tasks.filter(
-    (task) => task.status === "جديدة"
-  );
+  async function saveTaskChanges() {
+    if (!selectedTask) return;
 
-  const inProgressTasks = tasks.filter(
-    (task) => task.status === "قيد التنفيذ"
-  );
+    setError("");
+    setMessage("");
+    setSaving(true);
 
-  const completedTasks = tasks.filter(
-    (task) => task.status === "مكتملة"
-  );
+    try {
+      const updates: Record<string, unknown> = {
+        status: editStatus,
+        priority: editPriority,
+        due_date: editDueDate || null,
+      };
 
-  const highPriorityTasks = tasks.filter(
-    (task) => task.priority === "عالية"
-  );
+      let assignmentChanged = false;
+      let newAssignedTo: string | null = selectedTask.assigned_to;
 
-  if (!isLoaded) {
+      if (isOwner) {
+        const previousAssignedTo = selectedTask.assigned_to;
+
+        newAssignedTo = editAssignedTo.trim() || null;
+
+        updates.assigned_to = newAssignedTo;
+        updates.assigned_by = newAssignedTo ? currentUserId : null;
+        updates.assignment_type = "manager";
+
+        if (!newAssignedTo) {
+          updates.assignment_status = "cancelled";
+        } else if (
+          previousAssignedTo &&
+          previousAssignedTo !== newAssignedTo
+        ) {
+          updates.assignment_status = "reassigned";
+        } else {
+          updates.assignment_status = "assigned";
+        }
+
+        assignmentChanged =
+          previousAssignedTo !== newAssignedTo;
+      }
+
+      const { data, error: updateError } = await supabase
+        .from("tasks")
+        .update(updates)
+        .eq("id", selectedTask.id)
+        .select(
+          "id, company_id, title, description, status, priority, due_date, created_at, customer_id, assigned_to, assigned_by, assignment_type, assignment_status"
+        )
+        .single();
+
+      if (updateError) throw updateError;
+
+      const updatedTask = data as Task;
+
+      setTasks((current) =>
+        current.map((task) =>
+          task.id === updatedTask.id ? updatedTask : task
+        )
+      );
+
+      setSelectedTask(updatedTask);
+
+      /*
+       * Save assignment history.
+       *
+       * Important:
+       * We use the PREVIOUS assignment data from selectedTask
+       * so an original AI assignment is never lost from history.
+       */
+      if (isOwner && assignmentChanged) {
+        const previousAssignedTo =
+          selectedTask.assigned_to;
+
+        const previousAssignmentType =
+          selectedTask.assignment_type || "manager";
+
+        let historyAction = "assigned";
+        let historyReason =
+          "Task assignment changed manually by the company owner.";
+
+        if (!newAssignedTo) {
+          historyAction = "cancelled";
+          historyReason =
+            "Task assignment was cancelled manually by the company owner.";
+        } else if (
+          previousAssignedTo &&
+          previousAssignedTo !== newAssignedTo
+        ) {
+          historyAction = "reassigned";
+          historyReason =
+            previousAssignmentType === "ai"
+              ? "AI assignment was manually reassigned by the company owner."
+              : "Task was manually reassigned by the company owner.";
+        }
+
+        const { error: historyError } =
+          await supabase
+            .from("task_assignment_history")
+            .insert({
+              task_id: updatedTask.id,
+              company_id: updatedTask.company_id,
+              assigned_to:
+                newAssignedTo || previousAssignedTo,
+              assigned_by: currentUserId,
+              assignment_type:
+                previousAssignmentType,
+              action: historyAction,
+              reason: historyReason,
+            });
+
+        if (historyError) {
+          console.error(
+            "Assignment history creation failed:",
+            historyError
+          );
+        }
+      }
+
+      // Create notifications when the owner assigns or reassigns a task.
+      if (isOwner && assignmentChanged && newAssignedTo) {
+        const isReassignment =
+          Boolean(selectedTask.assigned_to) &&
+          selectedTask.assigned_to !== newAssignedTo;
+
+        const employeeTitle = isReassignment
+          ? "تم إعادة تعيين مهمة"
+          : "تم تعيين مهمة جديدة";
+
+        const employeeMessage = isReassignment
+          ? `تم إعادة تعيين المهمة "${updatedTask.title}" إليك.`
+          : `تم تعيين المهمة "${updatedTask.title}" إليك.`;
+
+        const ownerTitle = isReassignment
+          ? "تم إعادة تعيين المهمة"
+          : "تم تعيين المهمة";
+
+        const ownerMessage = isReassignment
+          ? `تم إعادة تعيين "${updatedTask.title}" إلى موظف جديد.`
+          : `تم تعيين "${updatedTask.title}" إلى موظف.`;
+
+        const { error: notificationError } = await supabase
+          .from("notifications")
+          .insert([
+            {
+              company_id: updatedTask.company_id,
+              user_id: newAssignedTo,
+              type: isReassignment
+                ? "task_reassigned"
+                : "task_assigned",
+              title: employeeTitle,
+              message: employeeMessage,
+              task_id: updatedTask.id,
+            },
+            {
+              company_id: updatedTask.company_id,
+              user_id: currentUserId,
+              type: isReassignment
+                ? "task_reassigned_by_manager"
+                : "task_assigned_by_manager",
+              title: ownerTitle,
+              message: ownerMessage,
+              task_id: updatedTask.id,
+            },
+          ]);
+
+        if (notificationError) {
+          console.error(
+            "Notification creation failed:",
+            notificationError
+          );
+        }
+      }
+
+      setMessage(
+        isEnglish
+          ? "Task updated successfully."
+          : "تم تحديث المهمة بنجاح"
+      );
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEnglish
+          ? "Failed to update task."
+          : "تعذر تحديث المهمة"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function updateEmployeeStatus(
+    status: TaskStatus
+  ) {
+    if (!selectedTask) return;
+
+    setError("");
+    setMessage("");
+    setSaving(true);
+
+    try {
+      const { data, error: updateError } = await supabase
+        .from("tasks")
+        .update({
+          status,
+        })
+        .eq("id", selectedTask.id)
+        .select(
+          "id, company_id, title, description, status, priority, due_date, created_at, customer_id, assigned_to, assigned_by, assignment_type, assignment_status"
+        )
+        .single();
+
+      if (updateError) throw updateError;
+
+      const updatedTask = data as Task;
+
+      setTasks((current) =>
+        current.map((task) =>
+          task.id === updatedTask.id ? updatedTask : task
+        )
+      );
+
+      setSelectedTask(updatedTask);
+
+      setMessage(
+        isEnglish
+          ? "Task status updated."
+          : "تم تحديث حالة المهمة"
+      );
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEnglish
+          ? "Failed to update task status."
+          : "تعذر تحديث حالة المهمة"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openTask(task: Task) {
+    setSelectedTask(task);
+    setEditStatus(normalizeStatus(task.status));
+    setEditPriority(normalizePriority(task.priority));
+    setEditDueDate(task.due_date || "");
+    setEditAssignedTo(task.assigned_to || "");
+    setError("");
+    setMessage("");
+  }
+
+  function getMemberLabel(userId: string | null) {
+    if (!userId) return text.unassigned;
+
+    const member = members.find(
+      (item) => item.user_id === userId
+    );
+
+    if (!member) {
+      if (userId === currentUserId) {
+        return text.assignedToMe;
+      }
+
+      return `${text.employee} (${userId.slice(0, 8)})`;
+    }
+
+    if (member.user_id === currentUserId) {
+      return `${text.assignedToMe} — ${getRoleLabel(
+        member.role,
+        locale
+      )}`;
+    }
+
+    return `${text.employee} — ${getRoleLabel(
+      member.role,
+      locale
+    )}`;
+  }
+
+  const stats = useMemo(() => {
+    return {
+      total: tasks.length,
+      new: tasks.filter(
+        (task) => normalizeStatus(task.status) === "جديدة"
+      ).length,
+      inProgress: tasks.filter(
+        (task) =>
+          normalizeStatus(task.status) === "قيد التنفيذ"
+      ).length,
+      completed: tasks.filter(
+        (task) =>
+          normalizeStatus(task.status) === "مكتملة"
+      ).length,
+    };
+  }, [tasks]);
+
+  useEffect(() => {
+    loadTasks();
+  }, []);
+
+  if (loading) {
     return (
-      <main
-        dir={isEnglish ? "ltr" : "rtl"}
-        className="flex min-h-[calc(100vh-40px)] items-center justify-center rounded-[24px] bg-[#f8f8f8]"
-      >
-        <div className="flex items-center gap-3 text-sm text-neutral-500">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-200 border-t-black" />
-          {text.loading}
+      <main className="min-h-screen bg-white p-6">
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-black" />
         </div>
       </main>
     );
@@ -403,614 +699,578 @@ export default function TasksPage() {
   return (
     <main
       dir={isEnglish ? "ltr" : "rtl"}
-      className="min-h-[calc(100vh-40px)] bg-[#f3f3f3] text-[#111]"
+      className="min-h-screen bg-white p-4 sm:p-6 lg:p-8"
     >
-      <div className="mx-auto max-w-[1500px]">
-        <header className="rounded-[24px] bg-white px-5 py-6 shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:px-7">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-white">
-                  <CheckSquare className="h-4 w-4" />
-                </div>
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-black tracking-tight text-black">
+              {text.title}
+            </h1>
 
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
-                  {text.management}
-                </span>
+            <p className="mt-1 text-sm text-neutral-500">
+              {text.subtitle}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setError("");
+              setMessage("");
+              setShowCreate(true);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-bold text-white transition hover:bg-neutral-800"
+          >
+            <Plus className="h-4 w-4" />
+            {text.newTask}
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-5 rounded-xl border border-black bg-black px-4 py-3 text-sm font-medium text-white">
+            {error}
+          </div>
+        )}
+
+        {message && (
+          <div className="mb-5 rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-medium text-black">
+            {message}
+          </div>
+        )}
+
+        <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+            <p className="text-xs font-bold text-neutral-500">
+              {text.allTasks}
+            </p>
+            <p className="mt-2 text-3xl font-black text-black">
+              {stats.total}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+            <p className="text-xs font-bold text-neutral-500">
+              {text.newCount}
+            </p>
+            <p className="mt-2 text-3xl font-black text-black">
+              {stats.new}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+            <p className="text-xs font-bold text-neutral-500">
+              {text.inProgress}
+            </p>
+            <p className="mt-2 text-3xl font-black text-black">
+              {stats.inProgress}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+            <p className="text-xs font-bold text-neutral-500">
+              {text.completed}
+            </p>
+            <p className="mt-2 text-3xl font-black text-black">
+              {stats.completed}
+            </p>
+          </div>
+        </div>
+
+        <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+          <div className="border-b border-neutral-200 px-5 py-4">
+            <h2 className="font-black text-black">
+              {text.allTasks}
+            </h2>
+          </div>
+
+          {tasks.length === 0 ? (
+            <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-black text-white">
+                <Check className="h-6 w-6" />
               </div>
 
-              <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">
-                {text.title}
-              </h1>
+              <h3 className="font-black text-black">
+                {text.noTasks}
+              </h3>
 
-              <p className="mt-2 max-w-xl text-sm leading-6 text-neutral-500">
-                {text.description}
+              <p className="mt-2 max-w-md text-sm text-neutral-500">
+                {text.createFirst}
               </p>
             </div>
+          ) : (
+            <div className="divide-y divide-neutral-100">
+              {tasks.map((task) => {
+                const status = normalizeStatus(task.status);
+                const priority = normalizePriority(
+                  task.priority
+                );
 
-            <button
-              onClick={() =>
-                setShowForm((value) => !value)
-              }
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-black px-5 text-sm font-semibold text-white transition hover:bg-neutral-800"
-            >
-              {showForm ? (
-                <>
-                  <X className="h-4 w-4" />
-                  {text.cancel}
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4" />
-                  {text.addTask}
-                </>
-              )}
-            </button>
-          </div>
-        </header>
+                return (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => openTask(task)}
+                    className="flex w-full items-center gap-4 px-5 py-5 text-start transition hover:bg-neutral-50"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-neutral-200 bg-white">
+                      <Clock3 className="h-4 w-4 text-black" />
+                    </div>
 
-        <div className="mt-5 space-y-5">
-          {errorMessage && (
-            <div className="rounded-2xl border border-red-100 bg-white p-4 text-sm text-red-600 shadow-[0_5px_25px_rgba(0,0,0,.03)]">
-              {errorMessage}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-black text-black">
+                          {task.title}
+                        </p>
+
+                        <span className="rounded-full border border-neutral-200 px-2.5 py-1 text-[10px] font-bold text-black">
+                          {getStatusLabel(status, locale)}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+                        <span>
+                          {getPriorityLabel(
+                            priority,
+                            locale
+                          )}
+                        </span>
+
+                        {task.assigned_to && (
+                          <span className="inline-flex items-center gap-1">
+                            <UserRound className="h-3 w-3" />
+                            {getMemberLabel(
+                              task.assigned_to
+                            )}
+                          </span>
+                        )}
+
+                        {!task.assigned_to && (
+                          <span>{text.unassigned}</span>
+                        )}
+
+                        {task.due_date && (
+                          <span>{task.due_date}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <ChevronLeft className="h-5 w-5 shrink-0 text-neutral-400" />
+                  </button>
+                );
+              })}
             </div>
           )}
+        </section>
+      </div>
 
-          {showForm && (
-            <section className="rounded-[24px] bg-white p-5 shadow-[0_10px_45px_rgba(0,0,0,.05)] sm:p-7">
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
-                    BusinessOS
-                  </p>
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-neutral-200 bg-white p-6 shadow-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-xl font-black text-black">
+                {text.newTask}
+              </h2>
 
-                  <h2 className="mt-2 text-lg font-bold">
-                    {text.newTask}
-                  </h2>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-                  <p className="mt-1 text-xs text-neutral-500">
-                    {text.newTaskDescription}
-                  </p>
-                </div>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-bold text-black">
+                  {text.titleField}
+                </label>
 
-                <button
-                  onClick={() => setShowForm(false)}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-neutral-50 text-neutral-400 transition hover:bg-neutral-100 hover:text-black"
-                  aria-label={text.cancel}
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <input
+                  value={newTitle}
+                  onChange={(event) =>
+                    setNewTitle(event.target.value)
+                  }
+                  placeholder={text.taskTitlePlaceholder}
+                  className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm text-black outline-none focus:border-black"
+                />
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                <FormField
-                  label={text.taskName}
-                  value={title}
-                  onChange={setTitle}
-                  placeholder={text.taskNamePlaceholder}
-                />
+              <div>
+                <label className="mb-2 block text-sm font-bold text-black">
+                  {text.description}
+                </label>
 
-                <FormField
-                  label={text.assignee}
-                  value={assignee}
-                  onChange={setAssignee}
-                  placeholder={text.assigneePlaceholder}
+                <textarea
+                  value={newDescription}
+                  onChange={(event) =>
+                    setNewDescription(event.target.value)
+                  }
+                  placeholder={text.descriptionPlaceholder}
+                  rows={4}
+                  className="w-full resize-none rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm text-black outline-none focus:border-black"
                 />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-black">
+                    {text.priority}
+                  </label>
+
+                  <select
+                    value={newPriority}
+                    onChange={(event) =>
+                      setNewPriority(
+                        event.target.value as Priority
+                      )
+                    }
+                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm text-black outline-none focus:border-black"
+                  >
+                    {PRIORITY_VALUES.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {getPriorityLabel(
+                          priority,
+                          locale
+                        )}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <div>
-                  <label className="mb-2 block text-xs font-semibold text-neutral-700">
+                  <label className="mb-2 block text-sm font-bold text-black">
                     {text.dueDate}
                   </label>
 
-                  <div className="relative">
-                    <CalendarDays className="pointer-events-none absolute start-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-
-                    <input
-                      type="date"
-                      value={dueDate}
-                      onChange={(event) =>
-                        setDueDate(event.target.value)
-                      }
-                      className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-4 ps-11 text-sm outline-none transition focus:border-black focus:ring-2 focus:ring-neutral-100"
-                    />
-                  </div>
+                  <input
+                    type="date"
+                    value={newDueDate}
+                    onChange={(event) =>
+                      setNewDueDate(event.target.value)
+                    }
+                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm text-black outline-none focus:border-black"
+                  />
                 </div>
-
-                <SelectField
-                  label={text.priority}
-                  value={priority}
-                  onChange={(value) =>
-                    setPriority(value as Priority)
-                  }
-                  options={[
-                    {
-                      value: "منخفضة",
-                      label: text.low,
-                    },
-                    {
-                      value: "متوسطة",
-                      label: text.medium,
-                    },
-                    {
-                      value: "عالية",
-                      label: text.high,
-                    },
-                  ]}
-                />
-
-                <SelectField
-                  label={text.status}
-                  value={status}
-                  onChange={(value) =>
-                    setStatus(value as TaskStatus)
-                  }
-                  options={[
-                    {
-                      value: "جديدة",
-                      label: text.newStatus,
-                    },
-                    {
-                      value: "قيد التنفيذ",
-                      label: text.inProgress,
-                    },
-                    {
-                      value: "مكتملة",
-                      label: text.completed,
-                    },
-                  ]}
-                />
               </div>
 
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <div className="flex gap-3 pt-2">
                 <button
-                  onClick={addTask}
-                  disabled={isSaving}
-                  className="h-11 rounded-xl bg-black px-6 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={createTask}
+                  disabled={saving}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-sm font-bold text-white hover:bg-neutral-800 disabled:opacity-50"
                 >
-                  {isSaving
-                    ? text.saving
-                    : text.saveTask}
+                  {saving && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+
+                  {saving ? text.creating : text.create}
                 </button>
 
                 <button
-                  onClick={() => setShowForm(false)}
-                  disabled={isSaving}
-                  className="h-11 rounded-xl border border-neutral-200 bg-white px-6 text-sm font-medium text-neutral-600 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  type="button"
+                  onClick={() => setShowCreate(false)}
+                  className="rounded-xl border border-neutral-200 px-5 py-3 text-sm font-bold text-black hover:bg-neutral-50"
                 >
                   {text.cancel}
                 </button>
               </div>
-            </section>
-          )}
-
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              title={text.totalTasks}
-              value={tasks.length}
-              icon={<ListTodo className="h-4 w-4" />}
-              type="black"
-            />
-
-            <StatCard
-              title={text.newTasks}
-              value={newTasks.length}
-              icon={<CircleDot className="h-4 w-4" />}
-              type="gray"
-            />
-
-            <StatCard
-              title={text.inProgressTasks}
-              value={inProgressTasks.length}
-              icon={<Clock3 className="h-4 w-4" />}
-              type="amber"
-            />
-
-            <StatCard
-              title={text.completedTasks}
-              value={completedTasks.length}
-              icon={
-                <CheckCircle2 className="h-4 w-4" />
-              }
-              type="green"
-            />
-          </section>
-
-          {highPriorityTasks.length > 0 && (
-            <section className="rounded-[20px] bg-white p-5 shadow-[0_8px_35px_rgba(0,0,0,.04)] sm:p-6">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                    <AlertTriangle className="h-4 w-4" />
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-semibold">
-                      {text.highPriority}
-                    </p>
-
-                    <p className="mt-1 text-xs text-neutral-500">
-                      {text.highPriorityDescription}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-bold text-amber-700">
-                  {highPriorityTasks.length}
-                </div>
-              </div>
-            </section>
-          )}
-
-          <section className="overflow-hidden rounded-[24px] bg-white shadow-[0_10px_45px_rgba(0,0,0,.05)]">
-            <div className="flex flex-col gap-4 border-b border-neutral-100 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
-                  BusinessOS
-                </p>
-
-                <h2 className="mt-2 text-lg font-bold">
-                  {text.taskList}
-                </h2>
-
-                <p className="mt-1 text-xs text-neutral-500">
-                  {text.taskListDescription}
-                </p>
-              </div>
-
-              <div className="w-fit rounded-xl bg-neutral-100 px-3 py-2 text-xs font-semibold text-neutral-600">
-                {tasks.length} {text.taskCount}
-              </div>
             </div>
+          </div>
+        </div>
+      )}
 
-            {tasks.length === 0 ? (
-              <div className="px-5 py-20 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-neutral-500">
-                  <CheckSquare className="h-6 w-6" />
+      {selectedTask && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4">
+          <div className="flex min-h-full items-center justify-center">
+            <div className="w-full max-w-2xl rounded-2xl border border-neutral-200 bg-white shadow-2xl">
+              <div className="flex items-start justify-between border-b border-neutral-200 p-6">
+                <div className="min-w-0">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-500">
+                    {text.details}
+                  </p>
+
+                  <h2 className="text-2xl font-black text-black">
+                    {selectedTask.title}
+                  </h2>
                 </div>
-
-                <p className="mt-5 font-semibold">
-                  {text.noTasks}
-                </p>
-
-                <p className="mt-2 text-sm text-neutral-500">
-                  {text.noTasksDescription}
-                </p>
 
                 <button
-                  onClick={() => setShowForm(true)}
-                  className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-black px-4 text-xs font-semibold text-white transition hover:bg-neutral-800"
+                  type="button"
+                  onClick={() => setSelectedTask(null)}
+                  className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100"
                 >
-                  <Plus className="h-3.5 w-3.5" />
-                  {text.addTask}
+                  <X className="h-5 w-5" />
                 </button>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table
-                  className={`w-full min-w-[900px] ${
-                    isEnglish
-                      ? "text-left"
-                      : "text-right"
-                  }`}
-                >
-                  <thead>
-                    <tr className="border-b border-neutral-100 bg-[#fafafa]">
-                      <TableHead>
-                        {text.task}
-                      </TableHead>
-                      <TableHead>
-                        {text.assignee}
-                      </TableHead>
-                      <TableHead>
+
+              <div className="space-y-6 p-6">
+                {selectedTask.description && (
+                  <div>
+                    <p className="mb-2 text-xs font-bold text-neutral-500">
+                      {text.description}
+                    </p>
+
+                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm leading-6 text-black">
+                      {selectedTask.description}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-neutral-200 p-4">
+                    <p className="text-xs font-bold text-neutral-500">
+                      {text.status}
+                    </p>
+
+                    <select
+                      value={editStatus}
+                      onChange={(event) =>
+                        setEditStatus(
+                          event.target.value as TaskStatus
+                        )
+                      }
+                      disabled={
+                        !isOwner &&
+                        selectedTask.assigned_to !==
+                          currentUserId
+                      }
+                      className="mt-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-bold text-black outline-none focus:border-black disabled:bg-neutral-100"
+                    >
+                      {STATUS_VALUES.map((status) => (
+                        <option key={status} value={status}>
+                          {getStatusLabel(status, locale)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="rounded-xl border border-neutral-200 p-4">
+                    <p className="text-xs font-bold text-neutral-500">
+                      {text.priority}
+                    </p>
+
+                    <select
+                      value={editPriority}
+                      onChange={(event) =>
+                        setEditPriority(
+                          event.target.value as Priority
+                        )
+                      }
+                      disabled={
+                        !isOwner &&
+                        selectedTask.assigned_to !==
+                          currentUserId
+                      }
+                      className="mt-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-bold text-black outline-none focus:border-black disabled:bg-neutral-100"
+                    >
+                      {PRIORITY_VALUES.map((priority) => (
+                        <option key={priority} value={priority}>
+                          {getPriorityLabel(
+                            priority,
+                            locale
+                          )}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-neutral-200 p-5">
+                  <div className="mb-4 flex items-center gap-2">
+                    <UserRound className="h-4 w-4 text-black" />
+                    <h3 className="font-black text-black">
+                      {text.assignment}
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-bold text-neutral-500">
+                        {text.assignedEmployee}
+                      </p>
+
+                      {isOwner ? (
+                        <select
+                          value={editAssignedTo}
+                          onChange={(event) =>
+                            setEditAssignedTo(
+                              event.target.value
+                            )
+                          }
+                          className="mt-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-bold text-black outline-none focus:border-black"
+                        >
+                          <option value="">
+                            {text.unassigned}
+                          </option>
+
+                          {members
+                            .filter(
+                              (member) =>
+                                member.role !== "owner"
+                            )
+                            .map((member) => (
+                              <option
+                                key={member.user_id}
+                                value={member.user_id}
+                              >
+                                {getRoleLabel(
+                                  member.role,
+                                  locale
+                                )}{" "}
+                                —{" "}
+                                {member.user_id.slice(0, 8)}
+                              </option>
+                            ))}
+                        </select>
+                      ) : (
+                        <div className="mt-2 rounded-lg bg-neutral-50 px-3 py-2 text-sm font-bold text-black">
+                          {getMemberLabel(
+                            selectedTask.assigned_to
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold text-neutral-500">
+                        {text.assignmentType}
+                      </p>
+
+                      <div className="mt-2 rounded-lg bg-neutral-50 px-3 py-2 text-sm font-bold text-black">
+                        {selectedTask.assignment_type === "ai"
+                          ? text.ai
+                          : text.manager}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold text-neutral-500">
+                        {text.assignmentStatus}
+                      </p>
+
+                      <div className="mt-2 rounded-lg bg-neutral-50 px-3 py-2 text-sm font-bold text-black">
+                        {selectedTask.assignment_status ===
+                        "reassigned"
+                          ? text.reassigned
+                          : selectedTask.assignment_status ===
+                            "cancelled"
+                          ? text.cancelled
+                          : selectedTask.assignment_status ===
+                            "pending"
+                          ? text.pending
+                          : text.assigned}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold text-neutral-500">
                         {text.dueDate}
-                      </TableHead>
-                      <TableHead>
-                        {text.priority}
-                      </TableHead>
-                      <TableHead>
-                        {text.status}
-                      </TableHead>
-                      <TableHead>
-                        {text.action}
-                      </TableHead>
-                    </tr>
-                  </thead>
+                      </p>
 
-                  <tbody>
-                    {tasks.map((task) => (
-                      <tr
-                        key={task.id}
-                        className="border-b border-neutral-100 last:border-0 transition hover:bg-[#fafafa]"
+                      <input
+                        type="date"
+                        value={editDueDate}
+                        onChange={(event) =>
+                          setEditDueDate(event.target.value)
+                        }
+                        disabled={
+                          !isOwner &&
+                          selectedTask.assigned_to !==
+                            currentUserId
+                        }
+                        className="mt-2 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-bold text-black outline-none focus:border-black disabled:bg-neutral-100"
+                      />
+                    </div>
+                  </div>
+
+                  {!isOwner &&
+                    selectedTask.assigned_to !==
+                      currentUserId && (
+                      <p className="mt-4 text-xs text-neutral-500">
+                        {text.ownerOnly}
+                      </p>
+                    )}
+                </div>
+
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+                  <p className="text-xs font-bold text-neutral-500">
+                    {text.created}
+                  </p>
+
+                  <p className="mt-1 text-sm font-bold text-black">
+                    {new Date(
+                      selectedTask.created_at
+                    ).toLocaleString(
+                      isEnglish ? "en-US" : "ar-EG"
+                    )}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={saveTaskChanges}
+                    disabled={
+                      saving ||
+                      (!isOwner &&
+                        selectedTask.assigned_to !==
+                          currentUserId)
+                    }
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-bold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {saving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4" />
+                    )}
+
+                    {saving ? text.saving : text.save}
+                  </button>
+
+                  {!isOwner &&
+                    selectedTask.assigned_to ===
+                      currentUserId && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateEmployeeStatus(
+                            editStatus === "جديدة"
+                              ? "قيد التنفيذ"
+                              : "مكتملة"
+                          )
+                        }
+                        disabled={saving}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 px-5 py-3 text-sm font-bold text-black hover:bg-neutral-50 disabled:opacity-50"
                       >
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black text-white">
-                              <CheckSquare className="h-4 w-4" />
-                            </div>
+                        <Check className="h-4 w-4" />
+                        {editStatus === "مكتملة"
+                          ? text.completed
+                          : text.inProgress}
+                      </button>
+                    )}
 
-                            <div>
-                              <p className="text-sm font-semibold">
-                                {task.title}
-                              </p>
-
-                              <p className="mt-0.5 text-[10px] text-neutral-400">
-                                BusinessOS
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-5">
-                          {task.assignee ? (
-                            <div className="flex items-center gap-2 text-sm text-neutral-600">
-                              <User className="h-3.5 w-3.5 text-neutral-400" />
-                              <span>
-                                {task.assignee}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-neutral-400">
-                              -
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-5">
-                          {task.dueDate ? (
-                            <div className="flex items-center gap-2 text-sm text-neutral-500">
-                              <CalendarDays className="h-3.5 w-3.5 text-neutral-400" />
-                              <span dir="ltr">
-                                {task.dueDate}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-neutral-400">
-                              -
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-5">
-                          <PriorityBadge
-                            priority={task.priority}
-                            text={text}
-                          />
-                        </td>
-
-                        <td className="px-6 py-5">
-                          <StatusBadge
-                            status={task.status}
-                            text={text}
-                          />
-                        </td>
-
-                        <td className="px-6 py-5">
-                          <button
-                            onClick={() =>
-                              deleteTask(task.id)
-                            }
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-red-50 hover:text-red-600"
-                            title={text.delete}
-                            aria-label={text.delete}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  {isOwner &&
+                    selectedTask.assigned_to && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditAssignedTo("");
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 px-5 py-3 text-sm font-bold text-black hover:bg-neutral-50"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                        {text.removeAssignment}
+                      </button>
+                    )}
+                </div>
               </div>
-            )}
-          </section>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </main>
-  );
-}
-
-function TableHead({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <th className="px-6 py-4 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-      {children}
-    </th>
-  );
-}
-
-function FormField({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-}) {
-  return (
-    <div>
-      <label className="mb-2 block text-xs font-semibold text-neutral-700">
-        {label}
-      </label>
-
-      <input
-        value={value}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
-        placeholder={placeholder}
-        className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-4 text-sm outline-none transition placeholder:text-neutral-400 focus:border-black focus:ring-2 focus:ring-neutral-100"
-      />
-    </div>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: {
-    value: string;
-    label: string;
-  }[];
-}) {
-  return (
-    <div>
-      <label className="mb-2 block text-xs font-semibold text-neutral-700">
-        {label}
-      </label>
-
-      <select
-        value={value}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
-        className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-4 text-sm outline-none transition focus:border-black focus:ring-2 focus:ring-neutral-100"
-      >
-        {options.map((option) => (
-          <option
-            key={option.value}
-            value={option.value}
-          >
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function StatCard({
-  title,
-  value,
-  icon,
-  type,
-}: {
-  title: string;
-  value: number;
-  icon: React.ReactNode;
-  type: "black" | "green" | "gray" | "amber";
-}) {
-  const styles = {
-    black: "bg-black text-white",
-    green: "bg-emerald-50 text-emerald-600",
-    gray: "bg-neutral-100 text-neutral-500",
-    amber: "bg-amber-50 text-amber-600",
-  };
-
-  return (
-    <div className="rounded-[20px] bg-white p-5 shadow-[0_8px_35px_rgba(0,0,0,.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(0,0,0,.07)]">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-neutral-500">
-            {title}
-          </p>
-
-          <p className="mt-3 text-3xl font-bold tracking-tight">
-            {value}
-          </p>
-        </div>
-
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl ${styles[type]}`}
-        >
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PriorityBadge({
-  priority,
-  text,
-}: {
-  priority: Priority;
-  text: {
-    low: string;
-    medium: string;
-    high: string;
-  };
-}) {
-  const styles: Record<Priority, string> = {
-    منخفضة: "bg-neutral-100 text-neutral-600",
-    متوسطة: "bg-amber-50 text-amber-700",
-    عالية: "bg-red-50 text-red-700",
-  };
-
-  const dots: Record<Priority, string> = {
-    منخفضة: "bg-neutral-400",
-    متوسطة: "bg-amber-500",
-    عالية: "bg-red-500",
-  };
-
-  const labels: Record<Priority, string> = {
-    منخفضة: text.low,
-    متوسطة: text.medium,
-    عالية: text.high,
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold ${styles[priority]}`}
-    >
-      <span
-        className={`h-1.5 w-1.5 rounded-full ${dots[priority]}`}
-      />
-
-      {labels[priority]}
-    </span>
-  );
-}
-
-function StatusBadge({
-  status,
-  text,
-}: {
-  status: TaskStatus;
-  text: {
-    newStatus: string;
-    inProgress: string;
-    completed: string;
-  };
-}) {
-  const styles: Record<TaskStatus, string> = {
-    جديدة: "bg-neutral-100 text-neutral-700",
-    "قيد التنفيذ": "bg-amber-50 text-amber-700",
-    مكتملة: "bg-emerald-50 text-emerald-700",
-  };
-
-  const dots: Record<TaskStatus, string> = {
-    جديدة: "bg-black",
-    "قيد التنفيذ": "bg-amber-500",
-    مكتملة: "bg-emerald-500",
-  };
-
-  const labels: Record<TaskStatus, string> = {
-    جديدة: text.newStatus,
-    "قيد التنفيذ": text.inProgress,
-    مكتملة: text.completed,
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-semibold ${styles[status]}`}
-    >
-      <span
-        className={`h-1.5 w-1.5 rounded-full ${dots[status]}`}
-      />
-
-      {labels[status]}
-    </span>
   );
 }

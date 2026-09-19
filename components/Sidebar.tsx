@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import NotificationBell from "@/components/NotificationBell";
 
 type Role = "owner" | "employee";
 
@@ -367,41 +368,78 @@ export default function Sidebar() {
           </Link>
         </div>
 
-        <div className="px-4 pt-4">
-          <div className="flex items-center gap-3 rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-black text-xs font-black text-white">
-              {companyName
-                ? companyName.charAt(0).toUpperCase()
-                : "B"}
+        <div className="px-4 pt-4 pb-2">
+          <div className="flex items-center justify-between px-1 pb-2">
+            <span className="text-[9px] font-bold uppercase tracking-[0.16em] text-neutral-400">
+              {isEnglish ? "Workspace" : "مساحة العمل"}
+            </span>
+
+            <NotificationBell />
+          </div>
+
+          <div className="group relative overflow-hidden rounded-2xl border border-neutral-200 bg-white p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-all hover:border-neutral-300 hover:shadow-sm">
+            <div
+              className={`absolute top-0 h-px w-12 bg-black ${
+                isEnglish ? "left-0" : "right-0"
+              }`}
+            />
+
+            <div className="flex items-center gap-3">
+              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black text-sm font-black text-white shadow-sm">
+                {companyName
+                  ? companyName.charAt(0).toUpperCase()
+                  : "B"}
+
+                <span
+                  className={`absolute -bottom-1 ${
+                    isEnglish ? "-right-1" : "-left-1"
+                  } flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-white bg-black`}
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="mb-1 text-[8px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                  {isEnglish ? "Company" : "الشركة"}
+                </p>
+
+                <p className="truncate text-[13px] font-extrabold tracking-tight text-black">
+                  {loadingAccount
+                    ? "..."
+                    : companyName ||
+                      (isEnglish ? "My Company" : "شركتي")}
+                </p>
+              </div>
+
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-neutral-200 text-neutral-400 transition group-hover:border-neutral-300 group-hover:text-black">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
             </div>
 
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[12px] font-bold text-black">
-                {loadingAccount
-                  ? "..."
-                  : companyName ||
-                    (isEnglish ? "My Company" : "شركتي")}
-              </p>
+            <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-2.5">
+              <span className="text-[9px] font-medium text-neutral-400">
+                {isEnglish
+                  ? "Business workspace"
+                  : "مساحة عمل الشركة"}
+              </span>
 
-              <p className="mt-0.5 truncate text-[9px] text-neutral-400">
-                {t("workspace")}
-              </p>
+              <span className="flex items-center gap-1.5 text-[9px] font-semibold text-neutral-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-black" />
+                {isEnglish ? "Active" : "نشطة"}
+              </span>
             </div>
-
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-neutral-400"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
           </div>
         </div>
-
         <nav className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-6">
           {navigation.map((section) => {
             const visibleItems = section.items.filter(
@@ -720,3 +758,4 @@ export default function Sidebar() {
     </>
   );
 }
+
