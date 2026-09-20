@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Groq from "groq-sdk";
 
-type AssignmentMode = "manager_approval" | "ai_auto";
+type AssignmentMode =
+  | "manager_approval"
+  | "ai_auto";
 
 type EmployeeCandidate = {
   user_id: string;
@@ -19,17 +21,68 @@ type AISelection = {
   reason: string;
 };
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY!,
-});
-
 export async function POST(request: Request) {
   try {
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+    const supabaseServiceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const groqApiKey =
+      process.env.GROQ_API_KEY;
+
+    if (!supabaseUrl) {
+      console.error(
+        "NEXT_PUBLIC_SUPABASE_URL is not configured."
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Supabase URL is not configured.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!supabaseServiceRoleKey) {
+      console.error(
+        "SUPABASE_SERVICE_ROLE_KEY is not configured."
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Supabase service role key is not configured.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!groqApiKey) {
+      console.error(
+        "GROQ_API_KEY is not configured."
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Groq API key is not configured.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const supabaseAdmin = createClient(
+      supabaseUrl,
+      supabaseServiceRoleKey
+    );
+
+    const groq = new Groq({
+      apiKey: groqApiKey,
+    });
+
     const body = await request.json();
 
     const taskId =
@@ -39,7 +92,9 @@ export async function POST(request: Request) {
 
     if (!taskId) {
       return NextResponse.json(
-        { error: "task_id is required" },
+        {
+          error: "task_id is required",
+        },
         { status: 400 }
       );
     }
@@ -47,18 +102,22 @@ export async function POST(request: Request) {
     /*
      * 1. Get task
      */
-    const { data: task, error: taskError } =
-      await supabaseAdmin
-        .from("tasks")
-        .select(
-          "id, company_id, title, description, status, priority, due_date, assigned_to, assignment_type, assignment_status"
-        )
-        .eq("id", taskId)
-        .single();
+    const {
+      data: task,
+      error: taskError,
+    } = await supabaseAdmin
+      .from("tasks")
+      .select(
+        "id, company_id, title, description, status, priority, due_date, assigned_to, assignment_type, assignment_status"
+      )
+      .eq("id", taskId)
+      .single();
 
     if (taskError || !task) {
       return NextResponse.json(
-        { error: "Task not found" },
+        {
+          error: "Task not found",
+        },
         { status: 404 }
       );
     }
@@ -66,16 +125,20 @@ export async function POST(request: Request) {
     /*
      * 2. Get company assignment mode
      */
-    const { data: company, error: companyError } =
-      await supabaseAdmin
-        .from("companies")
-        .select("task_assignment_mode")
-        .eq("id", task.company_id)
-        .single();
+    const {
+      data: company,
+      error: companyError,
+    } = await supabaseAdmin
+      .from("companies")
+      .select("task_assignment_mode")
+      .eq("id", task.company_id)
+      .single();
 
     if (companyError || !company) {
       return NextResponse.json(
-        { error: "Company not found" },
+        {
+          error: "Company not found",
+        },
         { status: 404 }
       );
     }
@@ -96,14 +159,16 @@ export async function POST(request: Request) {
     /*
      * 3. Get employees
      */
-    const { data: members, error: membersError } =
-      await supabaseAdmin
-        .from("company_members")
-        .select(
-          "user_id, role, job_title, specialty, max_active_tasks, is_available"
-        )
-        .eq("company_id", task.company_id)
-        .eq("role", "employee");
+    const {
+      data: members,
+      error: membersError,
+    } = await supabaseAdmin
+      .from("company_members")
+      .select(
+        "user_id, role, job_title, specialty, max_active_tasks, is_available"
+      )
+      .eq("company_id", task.company_id)
+      .eq("role", "employee");
 
     if (membersError) {
       return NextResponse.json(
@@ -129,7 +194,9 @@ export async function POST(request: Request) {
     const candidates: EmployeeCandidate[] = [];
 
     for (const member of members) {
-      if (!member.is_available) continue;
+      if (!member.is_available) {
+        continue;
+      }
 
       const { count } =
         await supabaseAdmin
@@ -138,8 +205,14 @@ export async function POST(request: Request) {
             count: "exact",
             head: true,
           })
-          .eq("company_id", task.company_id)
-          .eq("assigned_to", member.user_id)
+          .eq(
+            "company_id",
+            task.company_id
+          )
+          .eq(
+            "assigned_to",
+            member.user_id
+          )
           .in("status", [
             "new",
             "in_progress",
@@ -150,7 +223,9 @@ export async function POST(request: Request) {
       const maxTasks =
         member.max_active_tasks ?? 10;
 
-      if (activeTasks >= maxTasks) continue;
+      if (activeTasks >= maxTasks) {
+        continue;
+      }
 
       candidates.push({
         user_id: member.user_id,
@@ -194,7 +269,11 @@ ${JSON.stringify(
 )}
 
 AVAILABLE EMPLOYEES:
-${JSON.stringify(candidates, null, 2)}
+${JSON.stringify(
+  candidates,
+  null,
+  2
+)}
 
 Consider:
 1. Specialty match.
@@ -220,8 +299,11 @@ Return ONLY valid JSON:
 
     const completion =
       await groq.chat.completions.create({
-        model: "openai/gpt-oss-120b",
+        model:
+          "openai/gpt-oss-120b",
+
         temperature: 0.1,
+
         messages: [
           {
             role: "system",
@@ -241,7 +323,8 @@ Return ONLY valid JSON:
     if (!raw) {
       return NextResponse.json(
         {
-          error: "AI returned an empty assignment result.",
+          error:
+            "AI returned an empty assignment result.",
         },
         { status: 500 }
       );
@@ -257,7 +340,8 @@ Return ONLY valid JSON:
     } catch {
       return NextResponse.json(
         {
-          error: "AI returned invalid JSON.",
+          error:
+            "AI returned invalid JSON.",
           raw,
         },
         { status: 500 }
@@ -291,26 +375,30 @@ Return ONLY valid JSON:
     /*
      * 8. Assign task
      */
-    const { data: updatedTask, error: updateError } =
-      await supabaseAdmin
-        .from("tasks")
-        .update({
-          assigned_to:
-            selectedEmployee.user_id,
-          assignment_type: "ai",
-          assignment_status: "assigned",
-        })
-        .eq("id", task.id)
-        .select(
-          "id, company_id, title, assigned_to, assignment_type, assignment_status"
-        )
-        .single();
+    const {
+      data: updatedTask,
+      error: updateError,
+    } = await supabaseAdmin
+      .from("tasks")
+      .update({
+        assigned_to:
+          selectedEmployee.user_id,
+        assignment_type: "ai",
+        assignment_status: "assigned",
+      })
+      .eq("id", task.id)
+      .select(
+        "id, company_id, title, assigned_to, assignment_type, assignment_status"
+      )
+      .single();
 
     if (updateError || !updatedTask) {
       return NextResponse.json(
         {
-          error: "Failed to assign task",
-          details: updateError?.message,
+          error:
+            "Failed to assign task",
+          details:
+            updateError?.message,
         },
         { status: 500 }
       );
@@ -319,18 +407,20 @@ Return ONLY valid JSON:
     /*
      * 9. Save AI assignment history
      */
-    const { error: historyError } =
-      await supabaseAdmin
-        .from("task_assignment_history")
-        .insert({
-          task_id: task.id,
-          company_id: task.company_id,
-          assigned_to: selectedEmployee.user_id,
-          assigned_by: null,
-          assignment_type: "ai",
-          action: "assigned",
-          reason: aiSelection.reason,
-        });
+    const {
+      error: historyError,
+    } = await supabaseAdmin
+      .from("task_assignment_history")
+      .insert({
+        task_id: task.id,
+        company_id: task.company_id,
+        assigned_to:
+          selectedEmployee.user_id,
+        assigned_by: null,
+        assignment_type: "ai",
+        action: "assigned",
+        reason: aiSelection.reason,
+      });
 
     if (historyError) {
       console.error(
@@ -345,43 +435,82 @@ Return ONLY valid JSON:
     await supabaseAdmin
       .from("notifications")
       .insert({
-        company_id: task.company_id,
+        company_id:
+          task.company_id,
+
         user_id:
           selectedEmployee.user_id,
-        type: "task_assigned_ai",
-        title: "AI task assignment",
-        message: `BusinessOS AI assigned "${task.title}" to you.`,
-        task_id: task.id,
+
+        type:
+          "task_assigned_ai",
+
+        title:
+          "AI task assignment",
+
+        message:
+          `BusinessOS AI assigned "${task.title}" to you.`,
+
+        task_id:
+          task.id,
       });
 
     /*
      * 11. Notify company owner
      */
-    const { data: ownerMembers } =
-      await supabaseAdmin
-        .from("company_members")
-        .select("user_id")
-        .eq("company_id", task.company_id)
-        .eq("role", "owner");
-
-    if (ownerMembers && ownerMembers.length > 0) {
-      const ownerNotifications = ownerMembers.map(
-        (owner) => ({
-          company_id: task.company_id,
-          user_id: owner.user_id,
-          type: "task_assigned_ai_manager",
-          title: "AI task assignment",
-          message: `BusinessOS AI automatically assigned "${task.title}" to an employee.`,
-          task_id: task.id,
-        })
+    const {
+      data: ownerMembers,
+    } = await supabaseAdmin
+      .from("company_members")
+      .select("user_id")
+      .eq(
+        "company_id",
+        task.company_id
+      )
+      .eq(
+        "role",
+        "owner"
       );
 
-      const { error: ownerNotificationError } =
+    if (
+      ownerMembers &&
+      ownerMembers.length > 0
+    ) {
+      const ownerNotifications =
+        ownerMembers.map(
+          (owner) => ({
+            company_id:
+              task.company_id,
+
+            user_id:
+              owner.user_id,
+
+            type:
+              "task_assigned_ai_manager",
+
+            title:
+              "AI task assignment",
+
+            message:
+              `BusinessOS AI automatically assigned "${task.title}" to an employee.`,
+
+            task_id:
+              task.id,
+          })
+        );
+
+      const {
+        error:
+          ownerNotificationError,
+      } =
         await supabaseAdmin
           .from("notifications")
-          .insert(ownerNotifications);
+          .insert(
+            ownerNotifications
+          );
 
-      if (ownerNotificationError) {
+      if (
+        ownerNotificationError
+      ) {
         console.error(
           "Owner notification failed:",
           ownerNotificationError
@@ -394,19 +523,27 @@ Return ONLY valid JSON:
      */
     return NextResponse.json({
       success: true,
+
       assigned: true,
+
       mode: "ai_auto",
+
       task: updatedTask,
+
       selectedEmployee: {
         user_id:
           selectedEmployee.user_id,
+
         job_title:
           selectedEmployee.job_title,
+
         specialty:
           selectedEmployee.specialty,
+
         active_tasks:
           selectedEmployee.active_tasks,
       },
+
       aiReason:
         aiSelection.reason,
     });
@@ -418,7 +555,8 @@ Return ONLY valid JSON:
 
     return NextResponse.json(
       {
-        error: "Internal server error",
+        error:
+          "Internal server error",
       },
       { status: 500 }
     );
