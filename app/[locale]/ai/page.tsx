@@ -8,6 +8,18 @@ import {
   Sparkles,
   Loader2,
   AlertCircle,
+  UserPlus,
+  ShoppingCart,
+  ListTodo,
+  UserRoundCheck,
+  UserRoundPen,
+  RefreshCcw,
+  PencilLine,
+  ArrowRight,
+  Check,
+  X,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { useLocale } from "next-intl";
 import { supabase } from "@/lib/supabase";
@@ -37,6 +49,66 @@ type ProposedAction = {
   email?: string | null;
 };
 
+type IntentActionType =
+  | "create_customer"
+  | "create_order"
+  | "create_task"
+  | "assign_task"
+  | "update_customer"
+  | "update_order"
+  | "update_task";
+
+type IntentActionMode =
+  | "manual"
+  | "ai_auto"
+  | "manager_approval";
+
+type IntentAction = {
+  type: IntentActionType;
+  depends_on: string[];
+  mode: IntentActionMode;
+  requires_confirmation: boolean;
+};
+
+type IntentEntities = {
+  customer_name?: string | null;
+  customer_id?: string | null;
+  service?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  task_title?: string | null;
+  task_id?: string | null;
+  order_id?: string | null;
+  assigned_to?: string | null;
+  assigned_employee_name?: string | null;
+  priority?: string | null;
+  status?: string | null;
+  due_date?: string | null;
+};
+
+type IntentPlan = {
+  intent: string;
+  entities: IntentEntities;
+  actions: IntentAction[];
+};
+
+type CustomerSelection = {
+  id: string;
+  name: string;
+};
+
+type IntentPermissionResult = {
+  allowed: boolean;
+  action: IntentActionType;
+  reason: string;
+};
+
+type IntentPermission = {
+  allowed: boolean;
+  results: IntentPermissionResult[];
+  deniedActions: IntentActionType[];
+};
+
 type AccessState = "loading" | "allowed" | "denied" | "error";
 
 const STORAGE_KEY_PREFIX = "businessos-ai-messages";
@@ -48,6 +120,16 @@ export default function AIPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [proposedAction, setProposedAction] =
     useState<ProposedAction | null>(null);
+
+  const [intentPlan, setIntentPlan] =
+    useState<IntentPlan | null>(null);
+const [ambiguousCustomers, setAmbiguousCustomers] =
+  useState<CustomerSelection[]>([]);
+
+
+  const [intentPermission, setIntentPermission] =
+    useState<IntentPermission | null>(null);
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [accessState, setAccessState] =
@@ -64,30 +146,36 @@ export default function AIPage() {
   }, []);
 
   useEffect(() => {
-    if (accessState === "allowed") {
-      const saved = localStorage.getItem(storageKey);
+    if (accessState !== "allowed") {
+      return;
+    }
 
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
+    const saved = localStorage.getItem(storageKey);
 
-          if (Array.isArray(parsed)) {
-            setMessages(parsed);
-          }
-        } catch {
-          localStorage.removeItem(storageKey);
-        }
+    if (!saved) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved);
+
+      if (Array.isArray(parsed)) {
+        setMessages(parsed);
       }
+    } catch {
+      localStorage.removeItem(storageKey);
     }
   }, [accessState, storageKey]);
 
   useEffect(() => {
-    if (accessState === "allowed") {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify(messages)
-      );
+    if (accessState !== "allowed") {
+      return;
     }
+
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(messages)
+    );
   }, [messages, accessState, storageKey]);
 
   async function checkAccess() {
@@ -119,7 +207,7 @@ export default function AIPage() {
         setError(
           isEnglish
             ? "Please log in first."
-            : "يرجى تسجيل الدخول أولاً."
+            : "\u064A\u0631\u062C\u0649 \u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062F\u062E\u0648\u0644 \u0623\u0648\u0644\u0627\u064B."
         );
         setAccessState("denied");
         return;
@@ -174,7 +262,7 @@ export default function AIPage() {
         setError(
           isEnglish
             ? "Your company does not have an active subscription."
-            : "لا يوجد اشتراك نشط للشركة."
+            : "\u064A\u0631\u062C\u0649 \u0627\u0644\u0627\u0634\u062A\u0631\u0627\u0643 \u0644\u0644\u0627\u0633\u062A\u0641\u0627\u062F\u0629 \u0645\u0646 \u0627\u0644\u0645\u064A\u0632\u0627\u062A\u002E"
         );
         setAccessState("denied");
         return;
@@ -189,7 +277,7 @@ export default function AIPage() {
         setError(
           isEnglish
             ? "Your subscription has expired."
-            : "انتهى اشتراك الشركة."
+            : "\u0627\u0634\u062A\u0631\u0643 \u0644\u0644\u0627\u0633\u062A\u0641\u0627\u062F\u0629 \u0645\u0646 \u0627\u0644\u0645\u064A\u0632\u0627\u062A \u0627\u0644\u0643\u0627\u0645\u0644\u0629."
         );
         setAccessState("denied");
         return;
@@ -213,7 +301,7 @@ export default function AIPage() {
         setError(
           isEnglish
             ? "Active plan not found."
-            : "لم يتم العثور على الخطة النشطة."
+            : "\u062D\u0633\u0646\u0627\u064B\u060C \u0633\u0623\u0642\u0648\u0645 \u0628\u0625\u0646\u0634\u0627\u0621 \u062E\u0637\u0629 \u0627\u0644\u0623\u0646\u0634\u0637\u0629."
         );
         setAccessState("denied");
         return;
@@ -225,7 +313,7 @@ export default function AIPage() {
         setError(
           isEnglish
             ? "AI Assistant is not available on your current plan."
-            : "المساعد الذكي غير متاح في خطتك الحالية."
+            : "\u0644\u0623\u0633\u0641\u060C \u0644\u0627 \u064A\u0648\u062C\u062F \u0645\u0633\u0627\u0639\u062F \u0630\u0643\u064A \u0645\u062A\u0627\u062D \u0641\u064A \u062E\u0637\u062A\u0643 \u0627\u0644\u062D\u0627\u0644\u064A\u0629."
         );
         setAccessState("denied");
         return;
@@ -247,6 +335,572 @@ export default function AIPage() {
     }
   }
 
+  function getActionMeta(type: IntentActionType) {
+    switch (type) {
+      case "create_customer":
+        return {
+          icon: UserPlus,
+          title: isEnglish ? "Create Customer" : "\u0625\u0646\u0634\u0627\u0621 \u0639\u0645\u064A\u0644",
+          description: isEnglish
+            ? "A new customer will be created."
+            : "\u0633\u064A\u062A\u0645 \u0625\u0646\u0634\u0627\u0621 \u0639\u0645\u064A\u0644 \u062C\u062F\u064A\u062F.",
+          border: "border-blue-200",
+          iconBg: "bg-blue-50",
+          iconText: "text-blue-600",
+          line: "bg-blue-500",
+        };
+
+      case "create_order":
+        return {
+          icon: ShoppingCart,
+          title: isEnglish ? "Create Order" : "\u0625\u0646\u0634\u0627\u0621 \u0637\u0644\u0628",
+          description: isEnglish
+            ? "A new order will be prepared."
+            : "\u0633\u064A\u062A\u0645 \u062A\u062C\u0647\u064A\u0632 \u0637\u0644\u0628 \u062C\u062F\u064A\u062F.",
+          border: "border-green-200",
+          iconBg: "bg-green-50",
+          iconText: "text-green-600",
+          line: "bg-green-500",
+        };
+
+      case "create_task":
+        return {
+          icon: ListTodo,
+          title: isEnglish ? "Create Task" : "إنشاء مهمة",
+          description: isEnglish
+            ? "A new task will be created."
+            : "سيتم إنشاء مهمة جديدة.",
+          border: "border-orange-200",
+          iconBg: "bg-orange-50",
+          iconText: "text-orange-600",
+          line: "bg-orange-500",
+        };
+
+      case "assign_task":
+        return {
+          icon: UserRoundCheck,
+          title: isEnglish ? "Assign Task" : "\u062A\u0639\u064A\u064A\u0646 \u0645\u0647\u0645\u0629",
+          description: isEnglish
+            ? "The task will be assigned to an employee."
+            : "\u0633\u064A\u062A\u0645 \u062A\u0639\u064A\u064A\u0646 \u0645\u0647\u0645\u0629 \u0644\u0645\u0648\u0638\u0641.",
+          border: "border-purple-200",
+          iconBg: "bg-purple-50",
+          iconText: "text-purple-600",
+          line: "bg-purple-500",
+        };
+
+      case "update_customer":
+        return {
+          icon: UserRoundPen,
+          title: isEnglish ? "Update Customer" : "\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u0639\u0645\u064A\u0644",
+          description: isEnglish
+            ? "Customer information will be updated."
+            : "\u0633\u064A\u062A\u0645 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0639\u0645\u064A\u0644.",
+          border: "border-cyan-200",
+          iconBg: "bg-cyan-50",
+          iconText: "text-cyan-600",
+          line: "bg-cyan-500",
+        };
+
+      case "update_order":
+        return {
+          icon: RefreshCcw,
+          title: isEnglish ? "Update Order" : "\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u0637\u0644\u0628",
+          description: isEnglish
+            ? "Order information will be updated."
+            : "\u0633\u064A\u062A\u0645 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0637\u0644\u0628.",
+          border: "border-emerald-200",
+          iconBg: "bg-emerald-50",
+          iconText: "text-emerald-600",
+          line: "bg-emerald-600",
+        };
+
+      case "update_task":
+        return {
+          icon: PencilLine,
+          title: isEnglish ? "Update Task" : "\u062A\u062D\u062F\u064A\u062B \u0627\u0644\u0645\u0647\u0645\u0629",
+          description: isEnglish
+            ? "Task information will be updated."
+            : "سيتم تحديث بيانات المهمة.",
+          border: "border-amber-200",
+          iconBg: "bg-amber-50",
+          iconText: "text-amber-600",
+          line: "bg-amber-600",
+        };
+    }
+  }
+
+  function getEntityValue(
+    entities: IntentEntities,
+    key: keyof IntentEntities
+  ) {
+    const value = entities[key];
+
+    if (
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+      return null;
+    }
+
+    return String(value);
+  }
+
+  function EntityField({
+    labelEn,
+    labelAr,
+    value,
+  }: {
+    labelEn: string;
+    labelAr: string;
+    value: string | null;
+  }) {
+    if (!value) {
+      return null;
+    }
+
+    return (
+      <div>
+        <p className="text-xs text-black/50">
+          {isEnglish ? labelEn : labelAr}
+        </p>
+
+        <p className="mt-1 break-words font-medium">
+          {value}
+        </p>
+      </div>
+    );
+  }
+
+  function ActionDetails({
+    action,
+    index,
+  }: {
+    action: IntentAction;
+    index: number;
+  }) {
+    if (!intentPlan) {
+      return null;
+    }
+
+    const entities = intentPlan.entities;
+
+    const customerName = getEntityValue(
+      entities,
+      "customer_name"
+    );
+
+    const customerId = getEntityValue(
+      entities,
+      "customer_id"
+    );
+
+    const service = getEntityValue(
+      entities,
+      "service"
+    );
+
+    const taskTitle = getEntityValue(
+      entities,
+      "task_title"
+    );
+
+    const taskId = getEntityValue(
+      entities,
+      "task_id"
+    );
+
+    const orderId = getEntityValue(
+      entities,
+      "order_id"
+    );
+
+    const assignedEmployee =
+      getEntityValue(
+        entities,
+        "assigned_employee_name"
+      ) ||
+      getEntityValue(
+        entities,
+        "assigned_to"
+      );
+
+    const dueDate = getEntityValue(
+      entities,
+      "due_date"
+    );
+
+    const priority = getEntityValue(
+      entities,
+      "priority"
+    );
+
+    const status = getEntityValue(
+      entities,
+      "status"
+    );
+
+    return (
+      <div className="mt-4 space-y-4">
+        {action.type !== "assign_task" && (
+          <>
+            <EntityField
+              labelEn="Customer"
+              labelAr="العميل"
+              value={customerName}
+            />
+
+            <EntityField
+              labelEn="Customer ID"
+              labelAr="معرف العميل"
+              value={customerId}
+            />
+          </>
+        )}
+
+        {(action.type === "create_order" ||
+          action.type === "update_order") && (
+          <>
+            <EntityField
+              labelEn="Service / Product"
+              labelAr="الخدمة / المنتج"
+              value={service}
+            />
+
+            {entities.amount !== undefined &&
+              entities.amount !== null && (
+                <EntityField
+                  labelEn="Amount"
+                  labelAr="المبلغ"
+                  value={`${entities.amount} ${
+                    entities.currency ||
+                    (isEnglish ? "EGP" : "جنيه")
+                  }`}
+                />
+              )}
+
+            <EntityField
+              labelEn="Order ID"
+              labelAr="معرف الطلب"
+              value={orderId}
+            />
+
+            <EntityField
+              labelEn="Status"
+              labelAr="الحالة"
+              value={status}
+            />
+          </>
+        )}
+
+        {(action.type === "create_task" ||
+          action.type === "update_task") && (
+          <>
+            <EntityField
+              labelEn="Task"
+              labelAr="المهمة"
+              value={taskTitle}
+            />
+
+            <EntityField
+              labelEn="Task ID"
+              labelAr="معرف المهمة"
+              value={taskId}
+            />
+
+            <EntityField
+              labelEn="Due date"
+              labelAr="تاريخ الاستحقاق"
+              value={dueDate}
+            />
+
+            <EntityField
+              labelEn="Priority"
+              labelAr="الأولوية"
+              value={priority}
+            />
+
+            <EntityField
+              labelEn="Status"
+              labelAr="الحالة"
+              value={status}
+            />
+          </>
+        )}
+
+        {action.type === "assign_task" && (
+          <>
+            <EntityField
+              labelEn="Task"
+              labelAr="المهمة"
+              value={taskTitle}
+            />
+
+            <EntityField
+              labelEn="Task ID"
+              labelAr="معرف المهمة"
+              value={taskId}
+            />
+
+            <EntityField
+              labelEn="Employee"
+              labelAr="الموظف"
+              value={assignedEmployee}
+            />
+          </>
+        )}
+
+        {action.type === "create_customer" && (
+          <EntityField
+            labelEn="Customer"
+            labelAr="العميل"
+            value={customerName}
+          />
+        )}
+
+        {(action.depends_on?.length ?? 0) > 0 && (
+          <div className="rounded-xl border border-black/10 bg-black/[0.02] p-3">
+            <p className="text-xs text-black/50">
+              {isEnglish ? "Depends on" : "يعتمد على"}
+            </p>
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              {action.depends_on.map(
+                (dependency, dependencyIndex) => (
+                  <span
+                    key={`${dependency}-${dependencyIndex}`}
+                    className="rounded-full border border-black/10 bg-white px-2.5 py-1 text-xs font-medium"
+                  >
+                    {dependency}
+                  </span>
+                )
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 text-xs text-black/50">
+          <span>
+            {isEnglish
+              ? `Step ${index + 1}`
+              : `الخطوة ${index + 1}`}
+          </span>
+
+          <ArrowRight
+            className={`h-3.5 w-3.5 ${
+              isEnglish ? "" : "rotate-180"
+            }`}
+          />
+
+          <span>
+            {action.mode === "ai_auto"
+              ? isEnglish
+                ? "AI automatic"
+                : "تنفيذ تلقائي بالذكاء الاصطناعي"
+              : action.mode === "manager_approval"
+                ? isEnglish
+                  ? "Manager approval"
+                  : "موافقة المدير"
+                : isEnglish
+                  ? "Manual"
+                  : "يدوي"}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  function cancelIntentPlan() {
+    setIntentPlan(null);
+    setIntentPermission(null);
+    setAmbiguousCustomers([]);
+
+  function selectAmbiguousCustomer(
+    customer: CustomerSelection
+  ) {
+    if (!intentPlan) {
+      return;
+    }
+
+    setIntentPlan({
+      ...intentPlan,
+      entities: {
+        ...intentPlan.entities,
+        customer_id: customer.id,
+        customer_name: customer.name,
+      },
+    });
+
+    setAmbiguousCustomers([]);
+    setError("");
+  }
+  }
+
+  function selectAmbiguousCustomer(
+    customer: CustomerSelection
+  ) {
+    if (!intentPlan) {
+      return;
+    }
+
+    setIntentPlan({
+      ...intentPlan,
+      entities: {
+        ...intentPlan.entities,
+        customer_id: customer.id,
+        customer_name: customer.name,
+      },
+    });
+
+    setAmbiguousCustomers([]);
+    setError("");
+  }
+
+  async function confirmIntentPlan() {
+    if (!intentPlan || loading) {
+      return;
+    }
+
+    if (
+      intentPermission &&
+      !intentPermission.allowed
+    ) {
+      setError(
+        isEnglish
+          ? "You do not have permission to confirm this action plan."
+          : "??? ???? ?????? ?????? ??? ????????? ???."
+      );
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        "/api/ai/execute",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            intentPlan,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      const failedResult =
+        Array.isArray(data?.results)
+          ? data.results.find(
+              (result: {
+                success?: boolean;
+                message?: string;
+                error?: string;
+                data?: unknown;
+              }) => result?.success === false
+            )
+          : null;
+
+      if (!response.ok || !data?.success) {
+        const resultData =
+          failedResult?.data &&
+          typeof failedResult.data === "object"
+            ? (failedResult.data as {
+                code?: string;
+                customer_name?: string | null;
+                customers?: CustomerSelection[];
+              })
+            : null;
+
+        if (
+          failedResult?.error ===
+          "CUSTOMER_AMBIGUOUS"
+        ) {
+          const customers =
+            Array.isArray(failedResult?.data && typeof failedResult.data === "object" ? (failedResult.data as { customers?: CustomerSelection[] }).customers : undefined)
+              ? ((failedResult.data as { customers?: CustomerSelection[] }).customers ?? []).filter(
+                  (customer) =>
+                    customer &&
+                    typeof customer.id ===
+                      "string" &&
+                    typeof customer.name ===
+                      "string"
+                )
+              : [];
+
+          setAmbiguousCustomers(customers);
+
+          setError(
+            isEnglish
+              ? "More than one customer matches. Select the correct customer."
+              : "???? ???? ?? ???? ?????. ???? ?????? ??????."
+          );
+
+          return;
+        }
+
+        throw new Error(
+          data?.error ||
+            failedResult?.message ||
+            failedResult?.error ||
+            (isEnglish
+              ? "Failed to execute the action plan."
+              : "???? ????? ??? ?????????.")
+        );
+      }
+
+      const successfulResults =
+        Array.isArray(data.results)
+          ? data.results.filter(
+              (result: {
+                success?: boolean;
+              }) => result?.success
+            )
+          : [];
+
+      const successMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: isEnglish
+          ? successfulResults.length === 1
+            ? "The action was executed and verified successfully."
+            : "The action plan was executed and verified successfully."
+          : successfulResults.length === 1
+            ? "?? ????? ??????? ??????? ??? ?????."
+            : "?? ????? ??? ????????? ??????? ???? ?????.",
+        created_at:
+          new Date().toISOString(),
+      };
+
+      setMessages((current) => [
+        ...current,
+        successMessage,
+      ]);
+
+      setIntentPlan(null);
+      setIntentPermission(null);
+      setAmbiguousCustomers([]);
+    } catch (err) {
+      console.error(
+        "Intent plan execution error:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : isEnglish
+            ? "Failed to execute the action plan."
+            : "???? ????? ??? ?????????."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
   async function confirmProposedAction() {
     if (!proposedAction) {
       return;
@@ -283,7 +937,7 @@ export default function AIPage() {
             data?.error ||
               (isEnglish
                 ? "Failed to create the customer."
-                : "فشل إنشاء العميل.")
+                : "┘ü╪┤┘ä ╪Ñ┘å╪┤╪º╪í ╪º┘ä╪╣┘à┘è┘ä.")
           );
         }
 
@@ -292,7 +946,7 @@ export default function AIPage() {
           role: "assistant",
           content: isEnglish
             ? "The customer was created successfully."
-            : "تم إنشاء العميل بنجاح.",
+            : "╪¬┘à ╪Ñ┘å╪┤╪º╪í ╪º┘ä╪╣┘à┘è┘ä ╪¿┘å╪¼╪º╪¡.",
           created_at: new Date().toISOString(),
         };
 
@@ -331,7 +985,7 @@ export default function AIPage() {
             data?.error ||
               (isEnglish
                 ? "Failed to create the task."
-                : "فشل إنشاء المهمة.")
+                : "┘ü╪┤┘ä ╪Ñ┘å╪┤╪º╪í ╪º┘ä┘à┘ç┘à╪⌐.")
           );
         }
 
@@ -340,7 +994,7 @@ export default function AIPage() {
           role: "assistant",
           content: isEnglish
             ? "The task was created successfully."
-            : "تم إنشاء المهمة بنجاح.",
+            : "╪¬┘à ╪Ñ┘å╪┤╪º╪í ╪º┘ä┘à┘ç┘à╪⌐ ╪¿┘å╪¼╪º╪¡.",
           created_at: new Date().toISOString(),
         };
 
@@ -379,7 +1033,7 @@ export default function AIPage() {
             data?.error ||
               (isEnglish
                 ? "Failed to create the order."
-                : "فشل إنشاء الطلب.")
+                : "┘ü╪┤┘ä ╪Ñ┘å╪┤╪º╪í ╪º┘ä╪╖┘ä╪¿.")
           );
         }
 
@@ -388,7 +1042,7 @@ export default function AIPage() {
           role: "assistant",
           content: isEnglish
             ? "The order was created successfully."
-            : "تم إنشاء الطلب بنجاح.",
+            : "╪¬┘à ╪Ñ┘å╪┤╪º╪í ╪º┘ä╪╖┘ä╪¿ ╪¿┘å╪¼╪º╪¡.",
           created_at: new Date().toISOString(),
         };
 
@@ -410,7 +1064,7 @@ export default function AIPage() {
           ? err.message
           : isEnglish
             ? "Failed to execute the action."
-            : "تعذر تنفيذ الإجراء."
+            : "╪¬╪╣╪░╪▒ ╪¬┘å┘ü┘è╪░ ╪º┘ä╪Ñ╪¼╪▒╪º╪í."
       );
     } finally {
       setLoading(false);
@@ -468,7 +1122,7 @@ export default function AIPage() {
           data?.error ||
             (isEnglish
               ? "AI request failed."
-              : "فشل طلب المساعد الذكي.")
+              : "??? ??? ??????? ?????.")
         );
       }
 
@@ -479,9 +1133,22 @@ export default function AIPage() {
         created_at: new Date().toISOString(),
       };
 
-      if (data.action) {
+      if (data.intentPlan) {
+        setIntentPlan(data.intentPlan);
+        setIntentPermission(
+          data.intentPermission ?? null
+        );
+        setAmbiguousCustomers([]);
+        setProposedAction(null);
+      } else if (data.action) {
+        setIntentPlan(null);
+        setIntentPermission(null);
+        setAmbiguousCustomers([]);
         setProposedAction(data.action);
       } else {
+        setIntentPlan(null);
+        setIntentPermission(null);
+        setAmbiguousCustomers([]);
         setProposedAction(null);
       }
 
@@ -497,15 +1164,18 @@ export default function AIPage() {
           ? err.message
           : isEnglish
             ? "Failed to get AI response."
-            : "تعذر الحصول على رد من المساعد الذكي."
+            : "???? ?????? ??? ?? ?? ??????? ?????."
       );
     } finally {
       setLoading(false);
     }
   }
-
   function clearMessages() {
     setMessages([]);
+    setIntentPlan(null);
+    setIntentPermission(null);
+    setAmbiguousCustomers([]);
+    setProposedAction(null);
     localStorage.removeItem(storageKey);
   }
 
@@ -559,25 +1229,23 @@ export default function AIPage() {
     >
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-black text-white">
-                <Bot className="h-6 w-6" />
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-black text-white">
+              <Bot className="h-6 w-6" />
+            </div>
 
-              <div>
-                <h1 className="text-2xl font-bold">
-                  {isEnglish
-                    ? "AI Assistant"
-                    : "المساعد الذكي"}
-                </h1>
+            <div>
+              <h1 className="text-2xl font-bold">
+                {isEnglish
+                  ? "AI Assistant"
+                  : "المساعد الذكي"}
+              </h1>
 
-                <p className="text-sm text-black/50">
-                  {isEnglish
-                    ? "BusinessOS intelligent assistant"
-                    : "المساعد الذكي لمنصة BusinessOS"}
-                </p>
-              </div>
+              <p className="text-sm text-black/50">
+                {isEnglish
+                  ? "BusinessOS intelligent assistant"
+                  : "المساعد الذكي لمنصة BusinessOS"}
+              </p>
             </div>
           </div>
 
@@ -592,6 +1260,7 @@ export default function AIPage() {
               className="flex items-center gap-2 rounded-xl border border-black/10 px-4 py-2 text-sm font-medium transition hover:bg-black hover:text-white"
             >
               <Trash2 className="h-4 w-4" />
+
               {isEnglish ? "Clear" : "مسح"}
             </button>
           </div>
@@ -642,6 +1311,7 @@ export default function AIPage() {
               <div className="flex justify-start">
                 <div className="flex items-center gap-2 rounded-2xl border border-black/10 bg-black/[0.03] px-4 py-3 text-sm">
                   <Loader2 className="h-4 w-4 animate-spin" />
+
                   {isEnglish
                     ? "Thinking..."
                     : "جاري التفكير..."}
@@ -656,16 +1326,235 @@ export default function AIPage() {
             </div>
           )}
 
-          {proposedAction && (
+          {intentPlan && (
+            <div className="border-t border-black/10 bg-black/[0.02] p-4">
+              <div className="rounded-3xl border border-black/10 bg-white p-5 shadow-sm sm:p-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black text-white">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <h2 className="text-base font-bold">
+                        {isEnglish
+                          ? "Action Plan"
+                          : "خطة الإجراءات"}
+                      </h2>
+
+                      <p className="mt-1 text-xs text-black/50">
+                        {isEnglish
+                          ? "Review the actions before confirmation."
+                          : "راجع الإجراءات قبل التأكيد."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="rounded-full border border-black/10 px-3 py-1 text-xs font-medium">
+                    {intentPlan.actions.length}{" "}
+                    {isEnglish
+                      ? intentPlan.actions.length === 1
+                        ? "action"
+                        : "actions"
+                      : "إجراء"}
+                  </span>
+                </div>
+
+                {intentPermission && (
+                  <div
+                    className={`mb-5 flex items-start gap-3 rounded-2xl border p-4 ${
+                      intentPermission.allowed
+                        ? "border-green-200 bg-green-50/50"
+                        : "border-red-200 bg-red-50/50"
+                    }`}
+                  >
+                    {intentPermission.allowed ? (
+                      <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
+                    ) : (
+                      <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                    )}
+
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {intentPermission.allowed
+                          ? isEnglish
+                            ? "Permission check passed"
+                            : "تم اجتياز فحص الصلاحيات"
+                          : isEnglish
+                            ? "Permission check failed"
+                            : "فشل فحص الصلاحيات"}
+                      </p>
+
+                      <p className="mt-1 text-xs text-black/60">
+                        {intentPermission.allowed
+                          ? isEnglish
+                            ? "You are allowed to confirm this action plan."
+                            : "لديك صلاحية تأكيد خطة الإجراءات هذه."
+                          : isEnglish
+                            ? "One or more actions are not allowed for your role."
+                            : "يوجد إجراء أو أكثر غير مسموح به لدورك."}
+                      </p>
+
+                      {!intentPermission.allowed &&
+                        intentPermission.results
+                          .filter(
+                            (result) =>
+                              !result.allowed
+                          )
+                          .map((result) => (
+                            <p
+                              key={`${result.action}-${result.reason}`}
+                              className="mt-2 text-xs text-red-700"
+                            >
+                              {result.reason}
+                            </p>
+                          ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  {intentPlan.actions.map(
+                    (action, index) => {
+                      const meta =
+                        getActionMeta(
+                          action.type
+                        );
+
+                      const Icon = meta.icon;
+
+                      return (
+                        <div
+                          key={`${action.type}-${index}`}
+                          className={`relative overflow-hidden rounded-2xl border ${meta.border} bg-white`}
+                        >
+                          <div
+                            className={`absolute inset-y-0 start-0 w-1 ${meta.line}`}
+                          />
+
+                          <div className="p-4 sm:p-5">
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${meta.iconBg} ${meta.iconText}`}
+                              >
+                                <Icon className="h-5 w-5" />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <h3 className="font-semibold">
+                                    {meta.title}
+                                  </h3>
+
+                                  {action.requires_confirmation && (
+                                    <span className="rounded-full border border-black/10 bg-black/[0.02] px-2 py-0.5 text-[10px] font-medium">
+                                      {isEnglish
+                                        ? "Confirmation required"
+                                        : "يتطلب تأكيدًا"}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="mt-1 text-xs text-black/50">
+                                  {meta.description}
+                                </p>
+                              </div>
+
+                              <span className="shrink-0 text-xs font-semibold text-black/40">
+                                #{index + 1}
+                              </span>
+                            </div>
+
+                            <ActionDetails
+                              action={action}
+                              index={index}
+                            />
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+
+        {ambiguousCustomers.length > 0 && (
+          <div className="mb-5 rounded-2xl border border-black/10 bg-black/[0.02] p-4">
+            <p className="text-sm font-semibold">
+              {isEnglish ? "Select the customer" : "???? ??????"}
+            </p>
+            <p className="mt-1 text-xs text-black/50">
+              {isEnglish
+                ? "More than one customer matches this name."
+                : "???? ???? ?? ???? ????? ???? ?????. ???? ?????? ??????."}
+            </p>
+
+            <div className="mt-3 space-y-2">
+              {ambiguousCustomers.map((customer) => (
+                <button
+                  key={customer.id}
+                  type="button"
+                  onClick={() =>
+                    selectAmbiguousCustomer(customer)
+                  }
+                  className="flex w-full items-center justify-between rounded-xl border border-black/10 bg-white px-4 py-3 text-start transition hover:bg-black/[0.03]"
+                >
+                  <span className="font-medium">
+                    {customer.name}
+                  </span>
+                  <span className="text-xs text-black/40">
+                    {customer.id.slice(0, 8)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={confirmIntentPlan}
+                    disabled={
+                      loading ||
+                      (intentPermission !==
+                        null &&
+                        !intentPermission.allowed)
+                    }
+                    className="flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Check className="h-4 w-4" />
+
+                    {isEnglish
+                      ? "Confirm plan"
+                      : "تأكيد الخطة"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={cancelIntentPlan}
+                    disabled={loading}
+                    className="flex items-center justify-center gap-2 rounded-xl border border-black/10 px-4 py-2.5 text-sm font-medium transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <X className="h-4 w-4" />
+
+                    {isEnglish ? "Cancel" : "إلغاء"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!intentPlan && proposedAction && (
             <div className="border-t border-black/10 bg-black/[0.02] p-4">
               <div className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
                 <div className="mb-4">
                   <p className="text-sm font-semibold">
-                    {proposedAction.type === "create_customer"
+                    {proposedAction.type ===
+                    "create_customer"
                       ? isEnglish
                         ? "Proposed customer"
                         : "عميل مقترح"
-                      : proposedAction.type === "create_order"
+                      : proposedAction.type ===
+                          "create_order"
                         ? isEnglish
                           ? "New order"
                           : "طلب مقترح"
@@ -675,25 +1564,20 @@ export default function AIPage() {
                   </p>
 
                   <p className="mt-1 text-xs text-black/50">
-                    {proposedAction.type === "create_customer"
-                      ? isEnglish
-                        ? "Review the customer details before confirming."
-                        : "راجع بيانات العميل قبل تأكيد إنشائه."
-                      : proposedAction.type === "create_order"
-                        ? isEnglish
-                          ? "Review the order details before confirming."
-                          : "راجع تفاصيل الطلب قبل تأكيد إنشائه."
-                        : isEnglish
-                          ? "Review the task details before confirming."
-                          : "راجع تفاصيل المهمة قبل تأكيد إنشائها."}
+                    {isEnglish
+                      ? "Review the details before confirming."
+                      : "راجع التفاصيل قبل التأكيد."}
                   </p>
                 </div>
 
-                {proposedAction.type === "create_customer" ? (
+                {proposedAction.type ===
+                  "create_customer" && (
                   <div className="space-y-3 text-sm">
                     <div>
                       <p className="text-xs text-black/50">
-                        {isEnglish ? "Name" : "الاسم"}
+                        {isEnglish
+                          ? "Name"
+                          : "الاسم"}
                       </p>
 
                       <p className="mt-1 font-medium">
@@ -705,11 +1589,14 @@ export default function AIPage() {
 
                     <div>
                       <p className="text-xs text-black/50">
-                        {isEnglish ? "Phone" : "الهاتف"}
+                        {isEnglish
+                          ? "Phone"
+                          : "الهاتف"}
                       </p>
 
                       <p className="mt-1 font-medium">
-                        {proposedAction.phone || "-"}
+                        {proposedAction.phone ||
+                          "-"}
                       </p>
                     </div>
 
@@ -721,7 +1608,8 @@ export default function AIPage() {
                       </p>
 
                       <p className="mt-1 font-medium">
-                        {proposedAction.email || "-"}
+                        {proposedAction.email ||
+                          "-"}
                       </p>
                     </div>
 
@@ -739,7 +1627,10 @@ export default function AIPage() {
                       </div>
                     )}
                   </div>
-                ) : proposedAction.type === "create_order" ? (
+                )}
+
+                {proposedAction.type ===
+                  "create_order" && (
                   <div className="space-y-3 text-sm">
                     {proposedAction.customer_name && (
                       <div>
@@ -750,7 +1641,9 @@ export default function AIPage() {
                         </p>
 
                         <p className="mt-1 font-medium">
-                          {proposedAction.customer_name}
+                          {
+                            proposedAction.customer_name
+                          }
                         </p>
                       </div>
                     )}
@@ -763,7 +1656,8 @@ export default function AIPage() {
                       </p>
 
                       <p className="mt-1 font-medium">
-                        {proposedAction.service || "-"}
+                        {proposedAction.service ||
+                          "-"}
                       </p>
                     </div>
 
@@ -777,7 +1671,8 @@ export default function AIPage() {
 
                         <p className="mt-1 font-medium">
                           {Number(
-                            proposedAction.total || 0
+                            proposedAction.total ||
+                              0
                           ).toLocaleString(
                             isEnglish
                               ? "en-US"
@@ -797,7 +1692,8 @@ export default function AIPage() {
                         </p>
 
                         <p className="mt-1 font-medium">
-                          {proposedAction.status || "-"}
+                          {proposedAction.status ||
+                            "-"}
                         </p>
                       </div>
                     </div>
@@ -816,7 +1712,10 @@ export default function AIPage() {
                       </div>
                     )}
                   </div>
-                ) : (
+                )}
+
+                {proposedAction.type ===
+                  "create_task" && (
                   <div className="space-y-3 text-sm">
                     <div>
                       <p className="text-xs text-black/50">
@@ -826,7 +1725,8 @@ export default function AIPage() {
                       </p>
 
                       <p className="mt-1 font-medium">
-                        {proposedAction.title}
+                        {proposedAction.title ||
+                          "-"}
                       </p>
                     </div>
 
@@ -839,7 +1739,9 @@ export default function AIPage() {
                         </p>
 
                         <p className="mt-1 font-medium">
-                          {proposedAction.customer_name}
+                          {
+                            proposedAction.customer_name
+                          }
                         </p>
                       </div>
                     )}
@@ -853,7 +1755,9 @@ export default function AIPage() {
                         </p>
 
                         <p className="mt-1">
-                          {proposedAction.description}
+                          {
+                            proposedAction.description
+                          }
                         </p>
                       </div>
                     )}
@@ -867,7 +1771,10 @@ export default function AIPage() {
                         </p>
 
                         <p className="mt-1">
-                          {proposedAction.due_date || "-"}
+                          {
+                            proposedAction.due_date ||
+                            "-"
+                          }
                         </p>
                       </div>
 
@@ -879,7 +1786,10 @@ export default function AIPage() {
                         </p>
 
                         <p className="mt-1">
-                          {proposedAction.priority || "-"}
+                          {
+                            proposedAction.priority ||
+                            "-"
+                          }
                         </p>
                       </div>
 
@@ -891,7 +1801,10 @@ export default function AIPage() {
                         </p>
 
                         <p className="mt-1">
-                          {proposedAction.status || "-"}
+                          {
+                            proposedAction.status ||
+                            "-"
+                          }
                         </p>
                       </div>
                     </div>
@@ -901,7 +1814,9 @@ export default function AIPage() {
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                   <button
                     type="button"
-                    onClick={confirmProposedAction}
+                    onClick={
+                      confirmProposedAction
+                    }
                     disabled={loading}
                     className="rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -963,7 +1878,8 @@ export default function AIPage() {
               <button
                 type="submit"
                 disabled={
-                  loading || !input.trim()
+                  loading ||
+                  !input.trim()
                 }
                 className="flex items-center gap-2 rounded-2xl bg-black px-5 py-3 text-sm font-medium text-white transition hover:bg-black/80 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -986,3 +1902,9 @@ export default function AIPage() {
     </main>
   );
 }
+
+
+
+
+
+

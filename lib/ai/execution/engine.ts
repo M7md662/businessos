@@ -1,4 +1,4 @@
-﻿import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { checkPlanPermissions } from "@/lib/ai/permissions";
 import type {
   IntentAction,
@@ -8,25 +8,25 @@ import { createClient } from "@supabase/supabase-js";
 import Groq from "groq-sdk";
 
 const TASK_STATUSES = [
-  "Ã˜Â¬Ã˜Â¯Ã™Å Ã˜Â¯Ã˜Â©",
-  "Ã™â€šÃ™Å Ã˜Â¯ Ã˜Â§Ã™â€žÃ˜ÂªÃ™â€ Ã™ÂÃ™Å Ã˜Â°",
-  "Ã™â€¦Ã™Æ’Ã˜ÂªÃ™â€¦Ã™â€žÃ˜Â©",
+  "Ø¬Ø¯ÙŠØ¯Ø©",
+  "Ù‚ÙŠØ¯ Ø§Ù„ØªÙ†ÙÙŠØ°",
+  "Ù…ÙƒØªÙ…Ù„Ø©",
   "new",
   "in_progress",
   "completed",
 ] as const;
 
 const TASK_PRIORITIES = [
-  "Ã™â€¦Ã™â€ Ã˜Â®Ã™ÂÃ˜Â¶Ã˜Â©",
-  "Ã™â€¦Ã˜ÂªÃ™Ë†Ã˜Â³Ã˜Â·Ã˜Â©",
-  "Ã˜Â¹Ã˜Â§Ã™â€žÃ™Å Ã˜Â©",
+  "Ù…Ù†Ø®ÙØ¶Ø©",
+  "Ù…ØªÙˆØ³Ø·Ø©",
+  "Ø¹Ø§Ù„ÙŠØ©",
 ] as const;
 
 const ORDER_STATUSES = [
-  "Ã˜Â¬Ã˜Â¯Ã™Å Ã˜Â¯",
-  "Ã™â€šÃ™Å Ã˜Â¯ Ã˜Â§Ã™â€žÃ™â€¦Ã˜ÂªÃ˜Â§Ã˜Â¨Ã˜Â¹Ã˜Â©",
-  "Ã™â€¦Ã™Æ’Ã˜ÂªÃ™â€¦Ã™â€ž",
-  "Ã™â€¦Ã™â€žÃ˜ÂºÃ™Å ",
+  "Ø¬Ø¯ÙŠØ¯",
+  "Ù‚ÙŠØ¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©",
+  "Ù…ÙƒØªÙ…Ù„",
+  "Ù…Ù„ØºÙŠ",
 ] as const;
 
 type EmployeeMember = {
@@ -343,13 +343,13 @@ async function executeCreateTask(
     typeof entities.priority === "string" &&
     entities.priority.trim()
       ? entities.priority.trim()
-      : "Ã™â€¦Ã˜ÂªÃ™Ë†Ã˜Â³Ã˜Â·Ã˜Â©";
+      : "Ù…ØªÙˆØ³Ø·Ø©";
 
   const status =
     typeof entities.status === "string" &&
     entities.status.trim()
       ? entities.status.trim()
-      : "Ã˜Â¬Ã˜Â¯Ã™Å Ã˜Â¯Ã˜Â©";
+      : "Ø¬Ø¯ÙŠØ¯Ø©";
 
   if (!isValidPriority(priority)) {
     return {
@@ -490,7 +490,7 @@ async function executeCreateOrder(
     typeof entities.status === "string" &&
     entities.status.trim()
       ? entities.status.trim()
-      : "Ã˜Â¬Ã˜Â¯Ã™Å Ã˜Â¯";
+      : "Ø¬Ø¯ÙŠØ¯";
 
   if (!isValidOrderStatus(status)) {
     return {
@@ -798,8 +798,12 @@ async function resolveOrderForUpdate(
   }
 
   if (matchingCustomers.length > 1) {
-    throw new Error(
-      "More than one customer matches the specified name."
+    throw new CustomerAmbiguityError(
+      customerName,
+      matchingCustomers.map((customer) => ({
+        id: customer.id,
+        name: customer.name,
+      }))
     );
   }
 
@@ -910,8 +914,10 @@ async function executeUpdateOrder(
       supabase,
       companyId,
       entities.order_id,
-      entities.order_customer_name,
-      entities.order_service
+      entities.order_customer_name ??
+        entities.customer_name,
+      entities.order_service ??
+        entities.service
     );
 
   const oldValues = {
@@ -1352,8 +1358,8 @@ async function loadEmployeeCandidates(
         .eq("assigned_to", member.user_id)
         .neq("id", taskId)
         .in("status", [
-          "Ã˜Â¬Ã˜Â¯Ã™Å Ã˜Â¯Ã˜Â©",
-          "Ã™â€šÃ™Å Ã˜Â¯ Ã˜Â§Ã™â€žÃ˜ÂªÃ™â€ Ã™ÂÃ™Å Ã˜Â°",
+          "Ø¬Ø¯ÙŠØ¯Ø©",
+          "Ù‚ÙŠØ¯ Ø§Ù„ØªÙ†ÙÙŠØ°",
           "new",
           "in_progress",
         ]);
@@ -2099,12 +2105,121 @@ export async function executeIntentPlan(
 
   const results: ExecutionResult[] = [];
 
+  async function rollbackCreatedRecords() {
+    for (
+      let index = results.length - 1;
+      index >= 0;
+      index--
+    ) {
+      const result = results[index];
+
+      if (
+        !result?.success ||
+        !result.data ||
+        typeof result.data !== "object"
+      ) {
+        continue;
+      }
+
+      const data =
+        result.data as Record<
+          string,
+          unknown
+        >;
+
+      if (
+        result.action === "create_task"
+      ) {
+        const task = data.task;
+
+        if (
+          task &&
+          typeof task === "object"
+        ) {
+          const taskRecord =
+            task as Record<
+              string,
+              unknown
+            >;
+
+          if (
+            typeof taskRecord.id === "string" &&
+            taskRecord.id.trim()
+          ) {
+            await supabase
+              .from("tasks")
+              .delete()
+              .eq("company_id", companyId)
+              .eq("id", taskRecord.id);
+          }
+        }
+      }
+
+      if (
+        result.action === "create_order"
+      ) {
+        const order = data.order;
+
+        if (
+          order &&
+          typeof order === "object"
+        ) {
+          const orderRecord =
+            order as Record<
+              string,
+              unknown
+            >;
+
+          if (
+            typeof orderRecord.id === "string" &&
+            orderRecord.id.trim()
+          ) {
+            await supabase
+              .from("orders")
+              .delete()
+              .eq("company_id", companyId)
+              .eq("id", orderRecord.id);
+          }
+        }
+      }
+
+      if (
+        result.action === "create_customer"
+      ) {
+        const customer = data.customer;
+
+        if (
+          customer &&
+          typeof customer === "object"
+        ) {
+          const customerRecord =
+            customer as Record<
+              string,
+              unknown
+            >;
+
+          if (
+            typeof customerRecord.id === "string" &&
+            customerRecord.id.trim()
+          ) {
+            await supabase
+              .from("customers")
+              .delete()
+              .eq("company_id", companyId)
+              .eq("id", customerRecord.id);
+          }
+        }
+      }
+    }
+  }
+
   for (
     let actionIndex = 0;
     actionIndex < plan.actions.length;
     actionIndex++
   ) {
-    const action = plan.actions[actionIndex];
+    const action =
+      plan.actions[actionIndex];
 
     const runtimeEntities = {
       ...plan.entities,
@@ -2124,9 +2239,11 @@ export async function executeIntentPlan(
 
       if (
         dependencyResult?.success &&
-        dependencyResult.action === "create_customer" &&
+        dependencyResult.action ===
+          "create_customer" &&
         dependencyResult.data &&
-        typeof dependencyResult.data === "object"
+        typeof dependencyResult.data ===
+          "object"
       ) {
         const dependencyData =
           dependencyResult.data as Record<
@@ -2148,11 +2265,88 @@ export async function executeIntentPlan(
             >;
 
           if (
-            typeof customerRecord.id === "string" &&
+            typeof customerRecord.id ===
+              "string" &&
             customerRecord.id.trim()
           ) {
             runtimeEntities.customer_id =
               customerRecord.id;
+          }
+        }
+      }
+
+      if (
+        dependencyResult?.success &&
+        dependencyResult.action ===
+          "create_task" &&
+        dependencyResult.data &&
+        typeof dependencyResult.data ===
+          "object"
+      ) {
+        const dependencyData =
+          dependencyResult.data as Record<
+            string,
+            unknown
+          >;
+
+        const task =
+          dependencyData.task;
+
+        if (
+          task &&
+          typeof task === "object"
+        ) {
+          const taskRecord =
+            task as Record<
+              string,
+              unknown
+            >;
+
+          if (
+            typeof taskRecord.id ===
+              "string" &&
+            taskRecord.id.trim()
+          ) {
+            runtimeEntities.task_id =
+              taskRecord.id;
+          }
+        }
+      }
+
+      if (
+        dependencyResult?.success &&
+        dependencyResult.action ===
+          "create_order" &&
+        dependencyResult.data &&
+        typeof dependencyResult.data ===
+          "object"
+      ) {
+        const dependencyData =
+          dependencyResult.data as Record<
+            string,
+            unknown
+          >;
+
+        const order =
+          dependencyData.order;
+
+        if (
+          order &&
+          typeof order === "object"
+        ) {
+          const orderRecord =
+            order as Record<
+              string,
+              unknown
+            >;
+
+          if (
+            typeof orderRecord.id ===
+              "string" &&
+            orderRecord.id.trim()
+          ) {
+            runtimeEntities.order_id =
+              orderRecord.id;
           }
         }
       }
@@ -2174,7 +2368,9 @@ export async function executeIntentPlan(
         user.id
       );
     } catch (error) {
-      if (error instanceof CustomerAmbiguityError) {
+      if (
+        error instanceof CustomerAmbiguityError
+      ) {
         result = {
           success: false,
           action: action.type,
@@ -2182,11 +2378,14 @@ export async function executeIntentPlan(
           error: "CUSTOMER_AMBIGUOUS",
           data: {
             customer_name:
-              runtimeEntities.customer_name ?? null,
-            customers: error.customers,
+              runtimeEntities.customer_name ??
+              null,
+            customers:
+              error.customers,
           },
         };
       } else {
+        await rollbackCreatedRecords();
         throw error;
       }
     }
@@ -2194,15 +2393,10 @@ export async function executeIntentPlan(
     results.push(result);
 
     if (!result.success) {
+      await rollbackCreatedRecords();
       break;
     }
   }
 
   return results;
 }
-
-
-
-
-
-
