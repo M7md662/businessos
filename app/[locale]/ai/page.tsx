@@ -77,6 +77,7 @@ type IntentEntities = {
   amount?: number | null;
   currency?: string | null;
   task_title?: string | null;
+  new_task_title?: string | null;
   task_id?: string | null;
   order_id?: string | null;
   assigned_to?: string | null;
@@ -621,6 +622,22 @@ const [ambiguousCustomers, setAmbiguousCustomers] =
               value={priority}
             />
 
+
+            {action.type === "update_task" && (
+              <>
+                <EntityField
+                  labelEn="Assigned to"
+                  labelAr=""
+                  value={assignedEmployee}
+                />
+
+                <EntityField
+                  labelEn="New task title"
+                  labelAr=""
+                  value={getEntityValue(entities, "new_task_title")}
+                />
+              </>
+            )}
             <EntityField
               labelEn="Status"
               labelAr="الحالة"
@@ -769,7 +786,7 @@ const [ambiguousCustomers, setAmbiguousCustomers] =
       setError(
         isEnglish
           ? "You do not have permission to confirm this action plan."
-          : "??? ???? ?????? ?????? ??? ????????? ???."
+          : "لا تملك صلاحية تأكيد خطة الإجراءات التالية."
       );
       return;
     }
@@ -837,7 +854,7 @@ const [ambiguousCustomers, setAmbiguousCustomers] =
           setError(
             isEnglish
               ? "More than one customer matches. Select the correct customer."
-              : "???? ???? ?? ???? ?????. ???? ?????? ??????."
+              : "يوجد أكثر من عميل مطابق. اختر العميل الصحيح."
           );
 
           return;
@@ -849,7 +866,7 @@ const [ambiguousCustomers, setAmbiguousCustomers] =
             failedResult?.error ||
             (isEnglish
               ? "Failed to execute the action plan."
-              : "???? ????? ??? ?????????.")
+              : "فشل تنفيذ خطة الإجراءات.")
         );
       }
 
@@ -870,8 +887,8 @@ const [ambiguousCustomers, setAmbiguousCustomers] =
             ? "The action was executed and verified successfully."
             : "The action plan was executed and verified successfully."
           : successfulResults.length === 1
-            ? "?? ????? ??????? ??????? ??? ?????."
-            : "?? ????? ??? ????????? ??????? ???? ?????.",
+            ? "تم تنفيذ الإجراء والتحقق منه بنجاح."
+            : "تم تنفيذ خطة الإجراءات والتحقق منها بنجاح.",
         created_at:
           new Date().toISOString(),
       };
@@ -895,7 +912,7 @@ const [ambiguousCustomers, setAmbiguousCustomers] =
           ? err.message
           : isEnglish
             ? "Failed to execute the action plan."
-            : "???? ????? ??? ?????????."
+            : "فشل تنفيذ خطة الإجراءات."
       );
     } finally {
       setLoading(false);
@@ -1122,7 +1139,7 @@ const [ambiguousCustomers, setAmbiguousCustomers] =
           data?.error ||
             (isEnglish
               ? "AI request failed."
-              : "??? ??? ??????? ?????.")
+              : "فشل طلب الذكاء الاصطناعي.")
         );
       }
 
@@ -1164,7 +1181,7 @@ const [ambiguousCustomers, setAmbiguousCustomers] =
           ? err.message
           : isEnglish
             ? "Failed to get AI response."
-            : "???? ?????? ??? ?? ?? ??????? ?????."
+            : "فشل الحصول على استجابة الذكاء الاصطناعي."
       );
     } finally {
       setLoading(false);
@@ -1479,12 +1496,12 @@ const [ambiguousCustomers, setAmbiguousCustomers] =
         {ambiguousCustomers.length > 0 && (
           <div className="mb-5 rounded-2xl border border-black/10 bg-black/[0.02] p-4">
             <p className="text-sm font-semibold">
-              {isEnglish ? "Select the customer" : "???? ??????"}
+              {isEnglish ? "Select the customer" : "اختر العميل"}
             </p>
             <p className="mt-1 text-xs text-black/50">
               {isEnglish
                 ? "More than one customer matches this name."
-                : "???? ???? ?? ???? ????? ???? ?????. ???? ?????? ??????."}
+                : "???? ???? ?? ???? ????? ???? ?????. اختر العميل ??????."}
             </p>
 
             <div className="mt-3 space-y-2">

@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   IntentEntities,
   IntentPlan,
   IntentAction,
@@ -251,24 +251,142 @@ Schema:
   "reply": "short confirmation message"
 }
 
-Rules:
+Core rules:
 - Never execute anything.
 - Never invent IDs.
-- If the user gives a customer name, use customer_name.
-- If the user gives a new customer name, use new_customer_name.
-- If the user gives an amount, use amount.
-- If the user gives a new amount, use new_amount.
-- If the user gives a service, use service.
-- If the user gives a new service, use new_service.
-- If the user gives a task title, use task_title.
-- If the user gives a new task title, use new_task_title.
-- If the user gives an order ID, use order_id.
-- If the user gives a task ID, use task_id.
-- If the user gives an employee name, use assigned_employee_name.
-- Multiple requested operations must become multiple actions.
-- Preserve the user's language.
 - Unknown values must be null.
+- Preserve the user's language.
+- Multiple requested operations must become multiple actions.
 - Put important entities in both the top-level entities object and the relevant action's entities object whenever possible.
+
+Customer rules:
+- If the user gives an existing customer name, use customer_name.
+- If the user gives a new customer name, use new_customer_name.
+- If the user gives a phone number, use phone.
+- If the user gives an email, use email.
+- If the user gives notes, use notes.
+
+Order rules:
+- If the user gives an amount for an existing/current value, use amount.
+- If the user gives a new amount to replace an existing amount, use new_amount.
+- If the user gives a currency, use currency.
+- If the user gives a service, use service.
+- If the user gives a new service to replace an existing service, use new_service.
+- If the user identifies an order by ID, use order_id.
+- If an order is identified by customer name, use order_customer_name.
+- If an order is identified by service, use order_service.
+
+Task identification rules:
+- If the user gives the title of an existing task that should be found or changed, use task_title.
+- If the user gives a task ID, use task_id.
+- If the user gives a new title to replace an existing task title, use new_task_title.
+- If the user gives an employee name in relation to the task's current assignee, use assigned_employee_name.
+- If the user describes an existing task as "assigned to", "assigned for", "handled by", or equivalent wording, treat the employee name as a task-identification criterion, not as a requested change.
+- If the user asks to assign a task to an employee, use assigned_employee_name as the target assignee and create an assign_task action when appropriate.
+- Do not confuse identifying an existing assignee with requesting a new assignee.
+
+Task priority rules:
+- If the user describes an existing task using its current priority, use priority.
+- Examples of current-priority wording include:
+  "high priority task",
+  "task with high priority",
+  "the task whose priority is high",
+  "المهمة ذات الأولوية العالية",
+  "المهمة ذات الأولوية المرتفعة".
+- If the user asks to change the task's priority, use new_priority.
+- Never put a requested replacement priority only in priority.
+- Keep priority and new_priority distinct.
+
+Task status rules:
+- If the user describes an existing task using its current status, use status.
+- If the user asks to change the task's status, use new_status.
+- Keep status and new_status distinct.
+
+Task due-date rules:
+- If the user describes an existing task using its current due date, use due_date.
+- If the user asks to change the due date, use new_due_date.
+- Keep due_date and new_due_date distinct.
+
+Critical update_task rule:
+When the user asks to change an existing task and provides multiple identifying characteristics, preserve ALL of them in the update_task action.
+
+For example, for a request equivalent to:
+"Change the title of the task 'Follow up with Mohamed Ali' that has high priority and is assigned to Mohsen Mohsen to 'Follow up with customer Mohamed Ali'."
+
+The update_task action should contain:
+{
+  "task_title": "Follow up with Mohamed Ali",
+  "priority": "high",
+  "assigned_employee_name": "Mohsen Mohsen",
+  "new_task_title": "Follow up with customer Mohamed Ali"
+}
+
+The identifying fields:
+- task_id
+- task_title
+- priority
+- status
+- due_date
+- assigned_employee_name
+
+describe WHICH existing task should be selected.
+
+The replacement fields:
+- new_task_title
+- new_priority
+- new_status
+- new_due_date
+- new_service
+- new_amount
+- new_customer_name
+
+describe WHAT should be changed.
+
+Do not remove identifying fields just because a replacement field is also present.
+
+Task action rules:
+- create_task creates a new task.
+- update_task changes an existing task.
+- assign_task changes the assignee of an existing task.
+- If one user request contains both a task update and a reassignment, create the necessary separate actions and preserve their dependencies.
+- If a task must first be created and then assigned, use create_task followed by assign_task with a dependency.
+
+Entity placement:
+- For every update_task action, copy all task-identification entities into that action's entities object whenever they are available.
+- Also copy all requested replacement entities into that action's entities object.
+- The same important entities should also be present in the top-level entities object whenever possible.
+
+Examples:
+1. "Change the task title 'Follow up with Mohamed' to 'Call Mohamed tomorrow'."
+   Use:
+   task_title = "Follow up with Mohamed"
+   new_task_title = "Call Mohamed tomorrow"
+
+2. "Change the high-priority task 'Follow up with Mohamed' assigned to Mohsen to 'Call Mohamed tomorrow'."
+   Use:
+   task_title = "Follow up with Mohamed"
+   priority = "high"
+   assigned_employee_name = "Mohsen"
+   new_task_title = "Call Mohamed tomorrow"
+
+3. "Make the task 'Follow up with Mohamed' high priority."
+   Use:
+   task_title = "Follow up with Mohamed"
+   new_priority = "high"
+
+4. "Assign the task 'Follow up with Mohamed' to Mohsen."
+   Use:
+   task_title = "Follow up with Mohamed"
+   assigned_employee_name = "Mohsen"
+   Use an assign_task action when the request is an assignment operation.
+
+5. "Change the high-priority task assigned to Mohsen to low priority."
+   Use:
+   priority = "high"
+   assigned_employee_name = "Mohsen"
+   new_priority = "low"
+
+Do not invent a task title, employee name, priority, status, date, amount, service, customer, or ID that the user did not provide or that is not clearly present in the conversation context.
 `;
 
   const response = await fetch(
@@ -382,7 +500,6 @@ ${input.message}
         action !== null
     );
 
-  // Required task title validation
   const incompleteTaskAction = actions.find(
     (action) =>
       action.type === "create_task" &&
@@ -443,6 +560,3 @@ ${input.message}
           : "جهزت خطة الإجراءات التالية لتأكيدك.",
   };
 }
-
-
-

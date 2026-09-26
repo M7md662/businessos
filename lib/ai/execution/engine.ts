@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+﻿import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { checkPlanPermissions } from "@/lib/ai/permissions";
 import type {
   IntentAction,
@@ -8,25 +8,32 @@ import { createClient } from "@supabase/supabase-js";
 import Groq from "groq-sdk";
 
 const TASK_STATUSES = [
-  "Ø¬Ø¯ÙŠØ¯Ø©",
-  "Ù‚ÙŠØ¯ Ø§Ù„ØªÙ†ÙÙŠØ°",
-  "Ù…ÙƒØªÙ…Ù„Ø©",
+  "جديدة",
+  "قيد التنفيذ",
+  "مكتملة",
   "new",
   "in_progress",
   "completed",
 ] as const;
 
 const TASK_PRIORITIES = [
-  "Ù…Ù†Ø®ÙØ¶Ø©",
-  "Ù…ØªÙˆØ³Ø·Ø©",
-  "Ø¹Ø§Ù„ÙŠØ©",
+  "منخفضة",
+  "متوسطة",
+  "عالية",
+  "low",
+  "medium",
+  "high",
 ] as const;
 
 const ORDER_STATUSES = [
-  "Ø¬Ø¯ÙŠØ¯",
-  "Ù‚ÙŠØ¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©",
-  "Ù…ÙƒØªÙ…Ù„",
-  "Ù…Ù„ØºÙŠ",
+  "جديدة",
+  "قيد المتابعة",
+  "مكتمل",
+  "ملغي",
+  "new",
+  "in_progress",
+  "completed",
+  "cancelled",
 ] as const;
 
 type EmployeeMember = {
@@ -101,10 +108,116 @@ function normalizeName(value: string) {
   return value
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/[Ø£Ø¥Ø¢]/g, "Ø§")
-    .replace(/Ù‰/g, "ÙŠ")
-    .replace(/Ø©/g, "Ù‡")
+    .replace(/[عأإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
     .toLocaleLowerCase();
+}
+
+/**
+ * Repairs the specific UTF-8 -> Windows-1252 mojibake that affected
+ * older Arabic strings in this file/database.
+ *
+ * The function only accepts a conversion when it reduces mojibake
+ * markers and does not introduce replacement characters.
+ */
+function repairMojibake(value: string): string {
+  let current = value;
+
+  const score = (text: string) => {
+    const markers = [
+      "Ã",
+      "Â",
+      "â",
+      "ð",
+      "ƒ",
+      "œ",
+      "‚",
+      "™",
+      "š",
+      "ž",
+      "�",
+    ];
+
+    return markers.reduce(
+      (total, marker) =>
+        total + text.split(marker).length - 1,
+      0
+    );
+  };
+
+  for (let pass = 0; pass < 4; pass++) {
+    const beforeScore = score(current);
+
+    if (beforeScore === 0) {
+      break;
+    }
+
+    try {
+      const encoded = new TextEncoder().encode(
+        current
+      );
+
+      const decoded = new TextDecoder(
+        "windows-1252"
+      ).decode(encoded);
+
+      if (
+        decoded.includes("�") ||
+        score(decoded) >= beforeScore
+      ) {
+        break;
+      }
+
+      current = decoded;
+    } catch {
+      break;
+    }
+  }
+
+  return current;
+}
+
+function normalizeEmployeeName(value: string) {
+  return repairMojibake(value)
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
+}
+
+function normalizeTaskPriority(
+  value: string | null | undefined
+) {
+  if (!value) {
+    return "";
+  }
+
+  const repaired = repairMojibake(value)
+    .trim()
+    .toLocaleLowerCase();
+
+  if (
+    repaired === "high" ||
+    repaired === "عالية"
+  ) {
+    return "high";
+  }
+
+  if (
+    repaired === "medium" ||
+    repaired === "متوسطة"
+  ) {
+    return "medium";
+  }
+
+  if (
+    repaired === "low" ||
+    repaired === "منخفضة"
+  ) {
+    return "low";
+  }
+
+  return repaired;
 }
 
 function getSupabaseAdmin() {
@@ -175,37 +288,45 @@ async function resolveCustomer(
   }
 
   const normalizedCustomerName =
-    customerName.trim();
+    normalizeName(customerName);
 
   const { data, error } = await supabase
     .from("customers")
     .select("id, name")
     .eq("company_id", companyId)
-    .ilike("name", normalizedCustomerName)
-    .limit(10);
+    .limit(100);
 
   if (error) {
     throw error;
   }
 
-  if (!data || data.length === 0) {
+  const matchingCustomers =
+    (data || []).filter(
+      (customer) =>
+        typeof customer.name === "string" &&
+        normalizeName(customer.name) ===
+          normalizedCustomerName
+    );
+
+  if (matchingCustomers.length === 0) {
     throw new Error(
-      `Customer "${normalizedCustomerName}" was not found.`
+      `Customer "${customerName.trim()}" was not found.`
     );
   }
 
-  if (data.length > 1) {
+  if (matchingCustomers.length > 1) {
     throw new CustomerAmbiguityError(
-      normalizedCustomerName,
-      data.map((customer) => ({
+      customerName.trim(),
+      matchingCustomers.map((customer) => ({
         id: customer.id,
         name: customer.name,
       }))
     );
   }
 
-  return data[0];
+  return matchingCustomers[0];
 }
+
 async function executeCreateCustomer(
   supabase: Awaited<
     ReturnType<typeof createSupabaseServerClient>
@@ -332,24 +453,24 @@ async function executeCreateTask(
   const title =
     explicitTaskTitle ||
     (taskService && taskCustomerName
-      ? `ØªÙ†ÙÙŠØ° ${taskService} Ù„Ù„Ø¹Ù…ÙŠÙ„ ${taskCustomerName}`
+      ? `تنفيذ ${taskService} للعميل ${taskCustomerName}`
       : taskService
-        ? `ØªÙ†ÙÙŠØ° ${taskService}`
+        ? `تنفيذ ${taskService}`
         : taskCustomerName
-          ? `Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„Ø¹Ù…ÙŠÙ„ ${taskCustomerName}`
-          : "Ù…Ù‡Ù…Ø© Ø¬Ø¯ÙŠØ¯Ø©");
+          ? `متابعة العميل ${taskCustomerName}`
+          : "مهمة جديدة");
 
   const priority =
     typeof entities.priority === "string" &&
     entities.priority.trim()
       ? entities.priority.trim()
-      : "Ù…ØªÙˆØ³Ø·Ø©";
+      : "متوسطة";
 
   const status =
     typeof entities.status === "string" &&
     entities.status.trim()
       ? entities.status.trim()
-      : "Ø¬Ø¯ÙŠØ¯Ø©";
+      : "جديدة";
 
   if (!isValidPriority(priority)) {
     return {
@@ -477,7 +598,16 @@ async function executeCreateOrder(
     };
   }
 
-  const amount = entities.amount == null ? 0 : entities.amount; if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) {
+  const amount =
+    entities.amount == null
+      ? 0
+      : entities.amount;
+
+  if (
+    typeof amount !== "number" ||
+    !Number.isFinite(amount) ||
+    amount < 0
+  ) {
     return {
       success: false,
       action: "create_order",
@@ -490,7 +620,7 @@ async function executeCreateOrder(
     typeof entities.status === "string" &&
     entities.status.trim()
       ? entities.status.trim()
-      : "Ø¬Ø¯ÙŠØ¯";
+      : "جديدة";
 
   if (!isValidOrderStatus(status)) {
     return {
@@ -773,12 +903,14 @@ async function resolveOrderForUpdate(
   const normalizedCustomerName =
     normalizeName(customerName);
 
-  const { data: customers, error: customerError } =
-    await supabase
-      .from("customers")
-      .select("id, name")
-      .eq("company_id", companyId)
-      .limit(100);
+  const {
+    data: customers,
+    error: customerError,
+  } = await supabase
+    .from("customers")
+    .select("id, name")
+    .eq("company_id", companyId)
+    .limit(100);
 
   if (customerError) {
     throw customerError;
@@ -1037,13 +1169,28 @@ async function executeUpdateOrder(
   };
 }
 
+/**
+ * Resolves a task using:
+ * 1. Explicit task ID when available.
+ * 2. Exact task title.
+ * 3. Optional priority discriminator.
+ * 4. Optional assigned employee name discriminator.
+ *
+ * Important:
+ * - Priority matching supports both current Arabic values and
+ *   legacy mojibake values.
+ * - Employee matching is local to this resolver and does NOT
+ *   modify normalizeName(), so customer matching remains untouched.
+ */
 async function resolveTaskForUpdate(
   supabase: Awaited<
     ReturnType<typeof createSupabaseServerClient>
   >,
   companyId: string,
   taskId: string | null | undefined,
-  taskTitle: string | null | undefined
+  taskTitle: string | null | undefined,
+  priority: string | null | undefined,
+  assignedEmployeeName: string | null | undefined
 ) {
   if (taskId?.trim()) {
     const { data, error } =
@@ -1075,6 +1222,9 @@ async function resolveTaskForUpdate(
     );
   }
 
+  const normalizedTaskTitle =
+    taskTitle.trim();
+
   const { data, error } =
     await supabase
       .from("tasks")
@@ -1084,9 +1234,9 @@ async function resolveTaskForUpdate(
       .eq("company_id", companyId)
       .ilike(
         "title",
-        taskTitle.trim()
+        normalizedTaskTitle
       )
-      .limit(2);
+      .limit(20);
 
   if (error) {
     throw error;
@@ -1094,17 +1244,106 @@ async function resolveTaskForUpdate(
 
   if (!data || data.length === 0) {
     throw new Error(
-      `Task "${taskTitle.trim()}" was not found.`
+      `Task "${normalizedTaskTitle}" was not found.`
     );
   }
 
-  if (data.length > 1) {
+  let candidates = data;
+
+  if (priority?.trim()) {
+    const expectedPriority =
+      normalizeTaskPriority(priority);
+
+    candidates = candidates.filter(
+      (task) =>
+        normalizeTaskPriority(
+          typeof task.priority === "string"
+            ? task.priority
+            : null
+        ) === expectedPriority
+    );
+  }
+
+  if (assignedEmployeeName?.trim()) {
+    const normalizedEmployeeName =
+      normalizeEmployeeName(
+        assignedEmployeeName
+      );
+
+    const admin =
+      getSupabaseAdmin();
+
+    const {
+      data: members,
+      error: membersError,
+    } = await admin
+      .from("company_members")
+      .select("user_id")
+      .eq("company_id", companyId)
+      .eq("role", "employee");
+
+    if (membersError) {
+      throw membersError;
+    }
+
+    const matchingUserIds: string[] =
+      [];
+
+    for (const member of members ?? []) {
+      const {
+        data: authUserData,
+        error: authUserError,
+      } =
+        await admin.auth.admin.getUserById(
+          member.user_id
+        );
+
+      if (authUserError) {
+        continue;
+      }
+
+      const fullName =
+        typeof authUserData?.user
+          ?.user_metadata?.full_name ===
+        "string"
+          ? authUserData.user.user_metadata
+              .full_name
+          : null;
+
+      if (
+        fullName &&
+        normalizeEmployeeName(fullName) ===
+          normalizedEmployeeName
+      ) {
+        matchingUserIds.push(
+          member.user_id
+        );
+      }
+    }
+
+    candidates = candidates.filter(
+      (task) =>
+        typeof task.assigned_to ===
+          "string" &&
+        matchingUserIds.includes(
+          task.assigned_to
+        )
+    );
+  }
+
+  if (candidates.length === 0) {
     throw new Error(
-      `More than one task matches "${taskTitle.trim()}".`
+      `Task "${normalizedTaskTitle}" matching the specified criteria was not found.`
     );
   }
 
-  return data[0];
+  if (candidates.length > 1) {
+    throw new Error(
+      `More than one task matches "${normalizedTaskTitle}" with the specified criteria.`
+    );
+  }
+
+  return candidates[0];
 }
 
 async function executeUpdateTask(
@@ -1180,7 +1419,9 @@ async function executeUpdateTask(
       supabase,
       companyId,
       entities.task_id,
-      entities.task_title
+      entities.task_title,
+      entities.priority,
+      entities.assigned_employee_name
     );
 
   const oldValues = {
@@ -1358,8 +1599,8 @@ async function loadEmployeeCandidates(
         .eq("assigned_to", member.user_id)
         .neq("id", taskId)
         .in("status", [
-          "Ø¬Ø¯ÙŠØ¯Ø©",
-          "Ù‚ÙŠØ¯ Ø§Ù„ØªÙ†ÙÙŠØ°",
+          "جديدة",
+          "قيد التنفيذ",
           "new",
           "in_progress",
         ]);
@@ -1369,6 +1610,7 @@ async function loadEmployeeCandidates(
     }
 
     const activeTasks = count ?? 0;
+
     const maxTasks =
       member.max_active_tasks ?? 10;
 
@@ -1427,7 +1669,9 @@ async function resolveTaskForAssignment(
     supabase,
     companyId,
     taskId,
-    taskTitle
+    taskTitle,
+    null,
+    null
   );
 }
 
@@ -1466,6 +1710,291 @@ async function executeAssignTask(
       task.id
     );
 
+  const requestedName =
+    typeof entities.assigned_employee_name ===
+      "string" &&
+    entities.assigned_employee_name.trim()
+      ? entities.assigned_employee_name.trim()
+      : null;
+
+  if (requestedName) {
+    const supabaseAdminForManualAssignment =
+      getSupabaseAdmin();
+
+    const {
+      data: members,
+      error: membersError,
+    } = await supabaseAdminForManualAssignment
+      .from("company_members")
+      .select(
+        "user_id, role, job_title, specialty, max_active_tasks, is_available"
+      )
+      .eq("company_id", companyId)
+      .eq("role", "employee");
+
+    if (membersError) {
+      throw membersError;
+    }
+
+    const normalizedRequestedName =
+      normalizeEmployeeName(
+        requestedName
+      );
+
+    const matchingEmployees: EmployeeCandidate[] =
+      [];
+
+    for (const member of members ?? []) {
+      const {
+        data: authUserData,
+        error: authUserError,
+      } =
+        await supabaseAdminForManualAssignment.auth.admin.getUserById(
+          member.user_id
+        );
+
+      if (authUserError) {
+        continue;
+      }
+
+      const fullName =
+        typeof authUserData?.user
+          ?.user_metadata?.full_name ===
+        "string"
+          ? authUserData.user.user_metadata
+              .full_name
+          : null;
+
+      if (
+        !fullName ||
+        normalizeEmployeeName(fullName) !==
+          normalizedRequestedName
+      ) {
+        continue;
+      }
+
+      const { count, error: countError } =
+        await supabaseAdminForManualAssignment
+          .from("tasks")
+          .select("id", {
+            count: "exact",
+            head: true,
+          })
+          .eq("company_id", companyId)
+          .eq("assigned_to", member.user_id)
+          .neq("id", task.id)
+          .in("status", [
+            "جديدة",
+            "قيد التنفيذ",
+            "new",
+            "in_progress",
+          ]);
+
+      if (countError) {
+        throw countError;
+      }
+
+      matchingEmployees.push({
+        user_id: member.user_id,
+        role: member.role,
+        job_title: member.job_title,
+        specialty: member.specialty,
+        max_active_tasks:
+          member.max_active_tasks ?? 10,
+        is_available:
+          member.is_available,
+        full_name: fullName,
+        email:
+          authUserData.user.email ?? null,
+        active_tasks: count ?? 0,
+      });
+    }
+
+    if (matchingEmployees.length === 0) {
+      return {
+        success: false,
+        action: "assign_task",
+        message:
+          `Employee "${requestedName}" was not found in this company.`,
+        error: "EMPLOYEE_NOT_FOUND",
+      };
+    }
+
+    if (matchingEmployees.length > 1) {
+      return {
+        success: false,
+        action: "assign_task",
+        message:
+          `More than one employee matches "${requestedName}".`,
+        error: "AMBIGUOUS_EMPLOYEE",
+      };
+    }
+
+    const selectedEmployee =
+      matchingEmployees[0];
+
+    if (!selectedEmployee) {
+      return {
+        success: false,
+        action: "assign_task",
+        message:
+          "No employee was selected.",
+        error:
+          "EMPLOYEE_SELECTION_FAILED",
+      };
+    }
+
+    const assignmentType: "manual" =
+      "manual";
+
+    const assignmentReason =
+      `Task explicitly assigned to ${selectedEmployee.full_name}.`;
+
+    const {
+      data: updatedTask,
+      error: updateError,
+    } = await supabase
+      .from("tasks")
+      .update({
+        assigned_to:
+          selectedEmployee.user_id,
+        assigned_by:
+          actingUserId,
+        assignment_type:
+          assignmentType,
+        assignment_status:
+          "assigned",
+      })
+      .eq("company_id", companyId)
+      .eq("id", task.id)
+      .select(
+        "id, company_id, title, description, status, priority, due_date, assigned_to, assigned_by, assignment_type, assignment_status"
+      )
+      .single();
+
+    if (updateError || !updatedTask) {
+      throw (
+        updateError ??
+        new Error(
+          "Failed to assign task."
+        )
+      );
+    }
+
+    const {
+      data: verifiedTask,
+      error: verificationError,
+    } = await supabase
+      .from("tasks")
+      .select(
+        "id, company_id, title, status, priority, due_date, assigned_to, assigned_by, assignment_type, assignment_status"
+      )
+      .eq("company_id", companyId)
+      .eq("id", task.id)
+      .maybeSingle();
+
+    if (verificationError) {
+      throw verificationError;
+    }
+
+    if (
+      !verifiedTask ||
+      verifiedTask.assigned_to !==
+        selectedEmployee.user_id ||
+      verifiedTask.assignment_status !==
+        "assigned"
+    ) {
+      return {
+        success: false,
+        action: "assign_task",
+        message:
+          "The task assignment could not be verified.",
+        error:
+          "ASSIGNMENT_VERIFICATION_FAILED",
+      };
+    }
+
+    const {
+      error: historyError,
+    } =
+      await supabaseAdminForManualAssignment
+        .from(
+          "task_assignment_history"
+        )
+        .insert({
+          task_id: task.id,
+          company_id: companyId,
+          assigned_to:
+            selectedEmployee.user_id,
+          assigned_by:
+            actingUserId,
+          assignment_type:
+            assignmentType,
+          action: "assigned",
+          reason: assignmentReason,
+        });
+
+    if (historyError) {
+      console.error(
+        "Failed to save task assignment history:",
+        historyError
+      );
+    }
+
+    const {
+      error: employeeNotificationError,
+    } =
+      await supabaseAdminForManualAssignment
+        .from("notifications")
+        .insert({
+          company_id: companyId,
+          user_id:
+            selectedEmployee.user_id,
+          type:
+            "task_assigned",
+          title:
+            "Task assigned",
+          message:
+            `BusinessOS assigned "${task.title}" to you.`,
+          task_id: task.id,
+        });
+
+    if (employeeNotificationError) {
+      console.error(
+        "Employee notification failed:",
+        employeeNotificationError
+      );
+    }
+
+    return {
+      success: true,
+      action: "assign_task",
+      message:
+        "Task assigned and verified successfully.",
+      data: {
+        task: verifiedTask,
+        employee: {
+          user_id:
+            selectedEmployee.user_id,
+          name:
+            selectedEmployee.full_name,
+          email:
+            selectedEmployee.email,
+          job_title:
+            selectedEmployee.job_title,
+          specialty:
+            selectedEmployee.specialty,
+          active_tasks:
+            selectedEmployee.active_tasks,
+        },
+        assignment_type:
+          assignmentType,
+        reason:
+          assignmentReason,
+      },
+    };
+  }
+
   if (candidates.length === 0) {
     return {
       success: false,
@@ -1475,13 +2004,6 @@ async function executeAssignTask(
       error: "NO_AVAILABLE_EMPLOYEE",
     };
   }
-
-  const requestedName =
-    typeof entities.assigned_employee_name ===
-      "string" &&
-    entities.assigned_employee_name.trim()
-      ? entities.assigned_employee_name.trim()
-      : null;
 
   let selectedEmployee:
     | EmployeeCandidate
@@ -1493,83 +2015,39 @@ async function executeAssignTask(
 
   let assignmentReason = "";
 
-  if (requestedName) {
-    const normalizedRequestedName =
-      normalizeName(requestedName);
+  const supabaseAdminForAIAssignment =
+    getSupabaseAdmin();
 
-    const matchingEmployees =
-      candidates.filter((employee) => {
-        if (!employee.full_name) {
-          return false;
-        }
+  const {
+    data: company,
+    error: companyError,
+  } = await supabaseAdminForAIAssignment
+    .from("companies")
+    .select("task_assignment_mode")
+    .eq("id", companyId)
+    .single();
 
-        return (
-          normalizeName(
-            employee.full_name
-          ) === normalizedRequestedName
-        );
-      });
+  if (companyError) {
+    throw companyError;
+  }
 
-    if (matchingEmployees.length === 0) {
-      return {
-        success: false,
-        action: "assign_task",
-        message:
-          `Employee "${requestedName}" was not found as an available employee in this company.`,
-        error: "EMPLOYEE_NOT_FOUND",
-      };
-    }
+  const assignmentMode =
+    company?.task_assignment_mode;
 
-    if (matchingEmployees.length > 1) {
-      return {
-        success: false,
-        action: "assign_task",
-        message:
-          `More than one available employee matches "${requestedName}".`,
-        error: "AMBIGUOUS_EMPLOYEE",
-      };
-    }
+  if (assignmentMode !== "ai_auto") {
+    return {
+      success: false,
+      action: "assign_task",
+      message:
+        "Task requires manager approval before assignment.",
+      error:
+        "MANAGER_APPROVAL_REQUIRED",
+    };
+  }
 
-    selectedEmployee =
-      matchingEmployees[0];
+  const groq = getGroq();
 
-    assignmentType = "manual";
-    assignmentReason =
-      `Task explicitly assigned to ${selectedEmployee.full_name}.`;
-  } else {
-    const supabaseAdmin =
-      getSupabaseAdmin();
-
-    const {
-      data: company,
-      error: companyError,
-    } = await supabaseAdmin
-      .from("companies")
-      .select("task_assignment_mode")
-      .eq("id", companyId)
-      .single();
-
-    if (companyError) {
-      throw companyError;
-    }
-
-    const assignmentMode =
-      company?.task_assignment_mode;
-
-    if (assignmentMode !== "ai_auto") {
-      return {
-        success: false,
-        action: "assign_task",
-        message:
-          "Task requires manager approval before assignment.",
-        error:
-          "MANAGER_APPROVAL_REQUIRED",
-      };
-    }
-
-    const groq = getGroq();
-
-    const prompt = `
+  const prompt = `
 You are the task assignment engine for BusinessOS.
 
 Choose exactly one employee from the provided candidates.
@@ -1626,77 +2104,76 @@ Return ONLY valid JSON:
 }
 `;
 
-    const completion =
-      await groq.chat.completions.create({
-        model:
-          "openai/gpt-oss-120b",
-        temperature: 0.1,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a precise business task assignment engine. Return JSON only.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-      });
+  const completion =
+    await groq.chat.completions.create({
+      model:
+        "openai/gpt-oss-120b",
+      temperature: 0.1,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a precise business task assignment engine. Return JSON only.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+    });
 
-    const raw =
-      completion.choices[0]?.message?.content?.trim();
+  const raw =
+    completion.choices[0]?.message?.content?.trim();
 
-    if (!raw) {
-      return {
-        success: false,
-        action: "assign_task",
-        message:
-          "AI returned an empty assignment result.",
-        error:
-          "AI_ASSIGNMENT_EMPTY",
-      };
-    }
-
-    let aiSelection: AISelection;
-
-    try {
-      aiSelection =
-        JSON.parse(raw);
-    } catch {
-      return {
-        success: false,
-        action: "assign_task",
-        message:
-          "AI returned invalid assignment data.",
-        error:
-          "AI_ASSIGNMENT_INVALID_JSON",
-      };
-    }
-
-    selectedEmployee =
-      candidates.find(
-        (employee) =>
-          employee.user_id ===
-          aiSelection.employee_user_id
-      );
-
-    if (!selectedEmployee) {
-      return {
-        success: false,
-        action: "assign_task",
-        message:
-          "AI selected an employee who is not an eligible company employee.",
-        error:
-          "AI_EMPLOYEE_NOT_ELIGIBLE",
-      };
-    }
-
-    assignmentType = "ai";
-    assignmentReason =
-      aiSelection.reason ||
-      "Selected by BusinessOS AI based on employee suitability and workload.";
+  if (!raw) {
+    return {
+      success: false,
+      action: "assign_task",
+      message:
+        "AI returned an empty assignment result.",
+      error:
+        "AI_ASSIGNMENT_EMPTY",
+    };
   }
+
+  let aiSelection: AISelection;
+
+  try {
+    aiSelection =
+      JSON.parse(raw);
+  } catch {
+    return {
+      success: false,
+      action: "assign_task",
+      message:
+        "AI returned invalid assignment data.",
+      error:
+        "AI_ASSIGNMENT_INVALID_JSON",
+    };
+  }
+
+  selectedEmployee =
+    candidates.find(
+      (employee) =>
+        employee.user_id ===
+        aiSelection.employee_user_id
+    );
+
+  if (!selectedEmployee) {
+    return {
+      success: false,
+      action: "assign_task",
+      message:
+        "AI selected an employee who is not an eligible company employee.",
+      error:
+        "AI_EMPLOYEE_NOT_ELIGIBLE",
+    };
+  }
+
+  assignmentType = "ai";
+  assignmentReason =
+    aiSelection.reason ||
+    "Selected by BusinessOS AI based on employee suitability and workload.";
 
   if (!selectedEmployee) {
     return {
@@ -1718,9 +2195,7 @@ Return ONLY valid JSON:
       assigned_to:
         selectedEmployee.user_id,
       assigned_by:
-        assignmentType === "manual"
-          ? actingUserId
-          : null,
+        null,
       assignment_type:
         assignmentType,
       assignment_status:
@@ -1775,13 +2250,10 @@ Return ONLY valid JSON:
     };
   }
 
-  const supabaseAdmin =
-    getSupabaseAdmin();
-
   const {
     error: historyError,
   } =
-    await supabaseAdmin
+    await supabaseAdminForAIAssignment
       .from(
         "task_assignment_history"
       )
@@ -1791,9 +2263,7 @@ Return ONLY valid JSON:
         assigned_to:
           selectedEmployee.user_id,
         assigned_by:
-          assignmentType === "manual"
-            ? actingUserId
-            : null,
+          null,
         assignment_type:
           assignmentType,
         action: "assigned",
@@ -1810,24 +2280,18 @@ Return ONLY valid JSON:
   const {
     error: employeeNotificationError,
   } =
-    await supabaseAdmin
+    await supabaseAdminForAIAssignment
       .from("notifications")
       .insert({
         company_id: companyId,
         user_id:
           selectedEmployee.user_id,
         type:
-          assignmentType === "ai"
-            ? "task_assigned_ai"
-            : "task_assigned",
+          "task_assigned_ai",
         title:
-          assignmentType === "ai"
-            ? "AI task assignment"
-            : "Task assigned",
+          "AI task assignment",
         message:
-          assignmentType === "ai"
-            ? `BusinessOS AI assigned "${task.title}" to you.`
-            : `BusinessOS assigned "${task.title}" to you.`,
+          `BusinessOS AI assigned "${task.title}" to you.`,
         task_id: task.id,
       });
 
@@ -1842,7 +2306,7 @@ Return ONLY valid JSON:
     const {
       data: ownerMembers,
     } =
-      await supabaseAdmin
+      await supabaseAdminForAIAssignment
         .from("company_members")
         .select("user_id")
         .eq("company_id", companyId)
@@ -1872,7 +2336,7 @@ Return ONLY valid JSON:
         error:
           ownerNotificationError,
       } =
-        await supabaseAdmin
+        await supabaseAdminForAIAssignment
           .from("notifications")
           .insert(
             ownerNotifications
